@@ -56,17 +56,13 @@ class ConversationEngine:
         # Store user message
         self.sessions.add_message(session.id, "user", "user", message, "message")
 
-        # Determine target worker
-        target = worker_name
-        if not target:
-            # Use last worker from session if available
-            if session.last_worker:
-                target = session.last_worker
-                logger.info(f"Using last worker: {target}")
-            else:
-                # Auto-route via scheduler
-                route = self.scheduler.route(message, profile=session.profile)
-                target = route.provider
+        # Detect capability from message content
+        capability = self.scheduler.classify_task(message)
+        strategy = session.last_strategy or session.profile
+
+        # Use last capability to inform routing, not last model
+        route = self.scheduler.route(message, capability, profile=strategy or session.profile)
+        target = worker_name or route.provider
 
         # Get worker or create temporary
         worker = self.workers.get(target)
@@ -90,14 +86,14 @@ class ConversationEngine:
             model_used = worker.model
             tokens = 0
 
-        # Remember last worker/model for this session
-        self.sessions.set_last_used(session.id, target, model_used)
-
         # Store assistant message
         self.sessions.add_message(
             session.id, "assistant", target, result,
             "result", model_used, tokens,
         )
+
+        # Remember capability + strategy (not hard-bound to one model)
+        self.sessions.set_last_used(session.id, target, model_used, capability, strategy)
 
         return {
             "session_id": session.id,

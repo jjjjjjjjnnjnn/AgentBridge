@@ -61,8 +61,10 @@ class Session:
     mode: str = "chat"  # chat | ask | group
     participants: list[str] = field(default_factory=list)
     profile: str = "balanced"
-    last_worker: str = ""  # last worker/model used in this session
+    last_worker: str = ""  # last model used (informational)
     last_model: str = ""
+    last_capability: str = ""  # last task type detected: coding|architecture|review|research|writing
+    last_strategy: str = ""  # last scheduling strategy: free-first|quality|balanced
     max_parallel: int = 3
     max_models: int = 4
     created_at: int = field(default_factory=_ts)
@@ -96,6 +98,8 @@ class SessionStore:
                     profile TEXT DEFAULT 'balanced',
                     last_worker TEXT DEFAULT '',
                     last_model TEXT DEFAULT '',
+                    last_capability TEXT DEFAULT '',
+                    last_strategy TEXT DEFAULT '',
                     max_parallel INTEGER DEFAULT 3,
                     max_models INTEGER DEFAULT 4,
                     created_at INTEGER NOT NULL,
@@ -129,24 +133,36 @@ class SessionStore:
                 conn.commit()
         except sqlite3.OperationalError:
             pass
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("ALTER TABLE sessions ADD COLUMN last_capability TEXT DEFAULT ''")
+                conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("ALTER TABLE sessions ADD COLUMN last_strategy TEXT DEFAULT ''")
+                conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
     # ── Sessions ──────────────────────────────────────────
 
     def create_session(self, name: str, mode: str = "chat",
                        participants: Optional[list[str]] = None,
                        profile: str = "balanced",
-                       last_worker: str = "", last_model: str = "") -> Session:
+                       last_capability: str = "", last_strategy: str = "") -> Session:
         sid = _uid()
         now = _ts()
         parts = json.dumps(participants or [])
         with sqlite3.connect(self._db_path) as conn:
             conn.execute(
-                "INSERT INTO sessions (id, name, mode, participants, profile, last_worker, last_model, max_parallel, max_models, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sid, name, mode, parts, profile, last_worker, last_model, 3, 4, now, now),
+                "INSERT INTO sessions (id, name, mode, participants, profile, last_worker, last_model, last_capability, last_strategy, max_parallel, max_models, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', '', ?, ?, 3, 4, ?, ?)",
+                (sid, name, mode, parts, profile, last_capability, last_strategy, now, now),
             )
             conn.commit()
         return Session(id=sid, name=name, mode=mode, participants=participants or [],
-                       profile=profile, last_worker=last_worker, last_model=last_model,
+                       profile=profile, last_capability=last_capability, last_strategy=last_strategy,
                        created_at=now, updated_at=now)
 
     def get_session(self, sid: str) -> Optional[Session]:
@@ -159,6 +175,8 @@ class SessionStore:
                 profile=row_dict.get("profile", "balanced"),
                 last_worker=row_dict.get("last_worker", ""),
                 last_model=row_dict.get("last_model", ""),
+                last_capability=row_dict.get("last_capability", ""),
+                last_strategy=row_dict.get("last_strategy", ""),
                 max_parallel=row_dict.get("max_parallel", 3),
                 max_models=row_dict.get("max_models", 4),
                 created_at=row_dict["created_at"], updated_at=row_dict["updated_at"],
@@ -167,7 +185,7 @@ class SessionStore:
 
     def list_sessions(self, limit: int = 10) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id, name, mode, profile, last_worker, last_model, created_at, updated_at, "
+            "SELECT id, name, mode, profile, last_worker, last_model, last_capability, last_strategy, created_at, updated_at, "
             "(SELECT COUNT(*) FROM messages WHERE session_id=sessions.id) as msg_count "
             "FROM sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
         ).fetchall()
@@ -177,10 +195,11 @@ class SessionStore:
         self._conn.execute("UPDATE sessions SET updated_at=? WHERE id=?", (_ts(), sid))
         self._conn.commit()
 
-    def set_last_used(self, sid: str, worker: str, model: str = ""):
+    def set_last_used(self, sid: str, worker: str = "", model: str = "",
+                      capability: str = "", strategy: str = ""):
         self._conn.execute(
-            "UPDATE sessions SET last_worker=?, last_model=?, updated_at=? WHERE id=?",
-            (worker, model, _ts(), sid),
+            "UPDATE sessions SET last_worker=?, last_model=?, last_capability=?, last_strategy=?, updated_at=? WHERE id=?",
+            (worker, model, capability, strategy, _ts(), sid),
         )
         self._conn.commit()
 

@@ -793,11 +793,12 @@ def session_list(limit: int):
     if not sessions:
         click.echo("No sessions yet.")
         return
-    click.echo(f"{'ID':<20} {'Name':<30} {'Mode':<8} {'Worker':<12} {'Msgs':<6} {'Updated'}")
+    click.echo(f"{'ID':<20} {'Name':<25} {'Mode':<8} {'Capability':<12} {'Strategy':<12} {'Msgs':<6}")
     click.echo("-" * 80)
     for s in sessions:
-        worker = s.get('last_worker', '') or '-'
-        click.echo(f"{s['id']:<20} {s['name']:<30} {s['mode']:<8} {worker:<12} {s['msg_count']:<6} {s['updated_at']}")
+        cap = s.get('last_capability', '') or '-'
+        strat = s.get('last_strategy', '') or '-'
+        click.echo(f"{s['id']:<20} {s['name']:<25} {s['mode']:<8} {cap:<12} {strat:<12} {s['msg_count']:<6}")
 
 
 @session.command("timeline")
