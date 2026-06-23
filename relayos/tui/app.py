@@ -214,17 +214,26 @@ def _render_footer(wm: WorkerManager) -> Panel:
     text.append(" STATUS: ", style="bold green")
     text.append(f"{stats['total_workers']} workers online", style="green")
     text.append("  |  ", style="dim")
-    # Inbox count
+    # Inbox count via StateStore
     try:
-        from relayos.core.inbox import WorkerInbox
-        inbox = WorkerInbox()
-        istats = inbox.get_stats()
-        if istats["unread"]:
-            text.append(f"Inbox: {istats['unread']}", style="yellow")
+        from relayos.core.state import StateStore
+        ss = StateStore()
+        ic = ss.inbox_count()
+        if ic:
+            text.append(f"Inbox: {ic}", style="yellow")
         else:
             text.append("Inbox: 0", style="dim")
     except Exception:
         text.append("Inbox: -", style="dim")
+    text.append("  |  ", style="dim")
+    # Profile
+    try:
+        from relayos.config import load_config
+        cfg = load_config()
+        p = cfg.routing.default if hasattr(cfg, 'routing') and cfg.routing else "balanced"
+        text.append(f"Profile: {p}", style="cyan")
+    except Exception:
+        text.append("Profile: -", style="dim")
     text.append("  |  ", style="dim")
     # Total cost
     try:

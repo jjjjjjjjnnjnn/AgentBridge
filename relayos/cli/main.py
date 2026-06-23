@@ -558,6 +558,53 @@ def team_list():
         click.echo(f"  {t['name']:<15} {t['worker_count']} workers — {t['description']}")
 
 
+# ─── Profile & Estimate ─────────────────────────────────────
+
+
+@cli.command()
+@click.argument("profile_name", default="balanced")
+def profile(profile_name: str):
+    """Set routing profile: free, balanced, or quality."""
+    valid = ("free", "balanced", "quality")
+    if profile_name not in valid:
+        click.echo(f"[ERR] Invalid profile '{profile_name}'. Choose: {', '.join(valid)}", err=True)
+        return
+    # Save to config
+    from relayos.config import get_config_dir
+    import yaml
+    config_dir = get_config_dir()
+    config_path = config_dir / "config.yaml"
+    if config_path.exists():
+        cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        if cfg is None:
+            cfg = {}
+        if "routing" not in cfg:
+            cfg["routing"] = {}
+        cfg["routing"]["default"] = profile_name
+        config_path.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True), encoding="utf-8")
+    click.echo(f"[OK] Routing profile set to '{profile_name}'")
+
+
+@cli.command()
+@click.argument("prompt", nargs=-1, required=True)
+@click.option("-t", "--task-type", help="Task type (auto-detected if omitted)")
+def estimate(prompt: tuple[str], task_type: str | None):
+    """Estimate cost and best model for a task across all profiles."""
+    from relayos.core.scheduler import ModelScheduler
+    scheduler = ModelScheduler()
+    full = " ".join(prompt)
+    results = scheduler.estimate(full, task_type)
+
+    click.echo("Cost Estimates:")
+    click.echo(f"{'Profile':<12} {'Model':<32} {'Tier':<12} {'Cost':<12} {'Confidence':<10}")
+    click.echo("-" * 80)
+    for profile, info in results.items():
+        cost_str = f"${info['estimated_cost']:.4f}" if info['estimated_cost'] > 0 else "free"
+        click.echo(f"{profile:<12} {info['model']:<32} {info['cost_tier']:<12} {cost_str:<12} {info['confidence']:<10}")
+        click.echo(f"  {'':<12} {info['reason']}")
+    click.echo(f"\nApply: relayos profile <name>")
+
+
 # ─── Register extension command groups ──────────────────────
 
 try:
