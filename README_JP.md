@@ -42,7 +42,7 @@
 | [📁 例](#-例) | すぐ使えるワークフロー |
 | [🛣️ ロードマップ](#%EF%B8%8F-ロードマップ) | 将来計画 |
 | [🙏 謝辞](#%EF%B8%8F-謝辞) | 謝辞 |
-| [📄 ライセンス](#-ライセンス) | MIT |
+| [📄 ライセンス](#-ライセンス) | Apache 2.0 |
 
 ---
 
@@ -396,7 +396,7 @@ AgentBridge READMEは以下の言語で利用可能です：
 
 ## 📄 ライセンス
 
-[MIT](LICENSE) © 2026 [jjjjjjjjnnjnn](https://github.com/jjjjjjjjnnjnn)
+[Apache 2.0](LICENSE) Copyright 2026 [jjjjjjjjnnjnn](https://github.com/jjjjjjjjnnjnn)
 
 ---
 

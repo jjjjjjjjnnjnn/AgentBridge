@@ -42,7 +42,7 @@
 | [📁 Beispiele](#-beispiele) | Fertige Workflows |
 | [🛣️ Fahrplan](#%EF%B8%8F-fahrplan) | Zukunftspläne |
 | [🙏 Danksagungen](#%EF%B8%8F-danksagungen) | Danksagungen |
-| [📄 Lizenz](#-lizenz) | MIT |
+| [📄 Lizenz](#-lizenz) | Apache 2.0 |
 
 ---
 
@@ -394,7 +394,7 @@ AgentBridge README ist verfügbar in:
 
 ## 📄 Lizenz
 
-[MIT](LICENSE) © 2026 [jjjjjjjjnnjnn](https://github.com/jjjjjjjjnnjnn)
+[Apache 2.0](LICENSE) Copyright 2026 [jjjjjjjjnnjnn](https://github.com/jjjjjjjjnnjnn)
 
 ---
 

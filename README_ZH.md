@@ -42,7 +42,7 @@
 | [📁 示例](#-示例) | 可直接使用的工作流 |
 | [🛣️ 路线图](#%EF%B8%8F-路线图) | 未来规划 |
 | [🙏 致谢](#%EF%B8%8F-致谢) | 鸣谢 |
-| [📄 许可证](#-许可证) | MIT |
+| [📄 许可证](#-许可证) | Apache 2.0 |
 
 ---
 
@@ -393,7 +393,7 @@ AgentBridge README 提供以下语言版本：
 
 ## 📄 许可证
 
-[MIT](LICENSE) © 2026 [jjjjjjjjnnjnn](https://github.com/jjjjjjjjnnjnn)
+[Apache 2.0](LICENSE) Copyright 2026 [jjjjjjjjnnjnn](https://github.com/jjjjjjjjnnjnn)
 
 ---
 

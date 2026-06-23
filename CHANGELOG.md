@@ -15,4 +15,4 @@ All notable changes to AgentBridge will be documented in this file.
 - CLI commands: run, chat, agents, terminal, remember, recall, memory-list, init
 - 4 example workflows (saas-builder, linguagraph-research, debate, parallel-research)
 - Multi-language README (EN, ZH, DE, FR, ES, JP, KR)
-- MIT License
+- Apache 2.0 License
