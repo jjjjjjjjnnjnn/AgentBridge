@@ -674,6 +674,129 @@ def plan(task: tuple[str], profile: str, execute: bool):
         click.echo(f"\n[OK] {done}/{len(p.steps)} steps completed")
 
 
+# ─── Session Commands ───────────────────────────────────────
+
+
+@cli.group()
+def session():
+    """Manage AI sessions — chat, ask, group, list."""
+    pass
+
+
+@session.command("chat")
+@click.argument("message", nargs=-1, required=True)
+@click.option("-w", "--worker", help="Target worker (auto-routed if omitted)")
+@click.option("-s", "--session-id", help="Continue existing session")
+@click.option("-p", "--profile", default="", help="Routing profile")
+def session_chat(message: tuple[str], worker: str | None, session_id: str | None, profile: str):
+    """Chat with an AI worker.
+
+    Sends a message and returns the response. Auto-routes to best model
+    if no worker specified.
+
+    Examples:
+        relay session chat "Explain Kubernetes"
+        relay session chat "Design a database schema" -w architect
+    """
+    from relayos.core.conversation import ConversationEngine
+    eng = ConversationEngine()
+    full = " ".join(message)
+    result = eng.chat(full, worker, session_id, profile)
+    click.echo(f"\n[{result['worker']} ({result['model']})]")
+    click.echo(result["content"])
+    click.echo(f"\nSession: {result['session_id']}")
+
+
+@session.command("ask")
+@click.argument("task", nargs=-1, required=True)
+@click.option("-p", "--profile", default="balanced", help="Routing profile")
+def session_ask(task: tuple[str], profile: str):
+    """Submit a task for automatic execution.
+
+    Decomposes the task into steps, assigns optimal models,
+    and executes each step sequentially.
+
+    Example:
+        relay session ask "Build a JWT auth system"
+    """
+    from relayos.core.conversation import ConversationEngine
+    eng = ConversationEngine()
+    full = " ".join(task)
+    result = eng.ask(full, profile)
+    click.echo(f"\nSession: {result['session_id']}")
+    click.echo(f"Profile: {result['profile']}")
+    click.echo(f"Steps:   {result['steps']}")
+    for r in result["results"]:
+        click.echo(f"\n  [{r['step']}] {r['worker']} ({r['model']}):")
+        click.echo(f"    {r['content'][:200]}...")
+    click.echo(f"\n[OK] {len(result['results'])} steps completed")
+
+
+@session.command("group")
+@click.argument("message", nargs=-1, required=True)
+@click.option("-p", "--participants", default="researcher,architect,coder,reviewer",
+              help="Comma-separated worker names")
+@click.option("-s", "--session-id", help="Continue existing session")
+def session_group(message: tuple[str], participants: str, session_id: str | None):
+    """Multi-worker group discussion.
+
+    Each participant responds in sequence, building on previous responses.
+
+    Example:
+        relay session group "Design a payment system"
+        relay session group "Review the architecture" -p architect,reviewer
+    """
+    from relayos.core.conversation import ConversationEngine
+    eng = ConversationEngine()
+    parts = [p.strip() for p in participants.split(",")]
+    full = " ".join(message)
+    result = eng.group_chat(full, session_id, parts)
+    click.echo(f"\nGroup Session: {result['session_id']}")
+    click.echo(f"Participants: {', '.join(result['participants'])}")
+    for r in result["responses"]:
+        if "error" in r:
+            click.echo(f"\n  [{r['worker']}] ❌ {r['error']}")
+        else:
+            click.echo(f"\n  [{r['worker']} ({r['model']})]:")
+            click.echo(f"    {r['content'][:300]}...")
+
+
+@session.command("list")
+@click.option("-n", "--limit", default=10, type=int, help="Number of sessions")
+def session_list(limit: int):
+    """List recent AI sessions."""
+    from relayos.core.conversation import ConversationEngine
+    eng = ConversationEngine()
+    sessions = eng.list_sessions(limit)
+    if not sessions:
+        click.echo("No sessions yet.")
+        return
+    click.echo(f"{'ID':<20} {'Name':<30} {'Mode':<8} {'Messages':<10} {'Updated'}")
+    click.echo("-" * 80)
+    for s in sessions:
+        click.echo(f"{s['id']:<20} {s['name']:<30} {s['mode']:<8} {s['msg_count']:<10} {s['updated_at']}")
+
+
+@session.command("timeline")
+@click.argument("session_id")
+@click.option("-n", "--limit", default=20, type=int, help="Number of events")
+def session_timeline(session_id: str, limit: int):
+    """Show session activity timeline."""
+    from relayos.core.conversation import ConversationEngine
+    eng = ConversationEngine()
+    msgs = eng.get_timeline(session_id, limit)
+    if not msgs:
+        click.echo("No activity in this session.")
+        return
+    click.echo(f"Session Timeline: {session_id}")
+    click.echo("-" * 60)
+    for m in msgs:
+        icon = {"user": "→", "assistant": "←", "system": "•"}.get(m["role"], "?")
+        from_w = m["from"]
+        brief = m["content"][:80]
+        click.echo(f"  {icon} {from_w:<15} {brief}")
+
+
 @cli.command()
 @click.argument("profile_name", default="balanced")
 def profile(profile_name: str):
