@@ -173,3 +173,59 @@ class ExecutionPlanner:
             lines.append("")
 
         return "\n".join(lines)
+
+    def build_capability_graph(self, task: str, profile: str = "balanced") -> dict:
+        """Build a capability graph for a task.
+
+        Returns a structured graph showing capabilities, weights, and dependencies.
+        """
+        task_type = self.scheduler.classify_task(task)
+        pattern = TASK_PATTERNS.get(task_type, TASK_PATTERNS["coding"])
+        if not pattern:
+            pattern = TASK_PATTERNS["coding"]
+
+        graph = []
+        for step_def in pattern:
+            route = self.scheduler.route(
+                step_def["prompt"].format(task=task),
+                step_def["task_type"],
+                profile=profile,
+            )
+            graph.append({
+                "id": step_def["id"],
+                "capability": step_def["task_type"],
+                "description": step_def["description"],
+                "model": route.model,
+                "provider": route.provider,
+                "cost_tier": route.cost_tier,
+                "estimated_cost": route.estimated_cost,
+                "depends_on": step_def.get("depends_on", []),
+            })
+
+        return {
+            "task": task,
+            "task_type": task_type,
+            "profile": profile,
+            "steps": graph,
+            "total_steps": len(graph),
+            "total_cost": round(sum(s["estimated_cost"] for s in graph), 6),
+        }
+
+    def format_graph(self, graph: dict) -> str:
+        """Format a capability graph as a human-readable string."""
+        lines = [
+            f"Capability Graph: {graph['task']}",
+            f"Type: {graph['task_type']}  Profile: {graph['profile']}",
+            f"Estimated cost: ${graph['total_cost']:.4f}",
+            f"Steps: {graph['total_steps']}",
+            "",
+        ]
+
+        for i, step in enumerate(graph["steps"], 1):
+            cost_str = f"${step['estimated_cost']:.4f}" if step['estimated_cost'] > 0 else "free"
+            deps = f" → {', '.join(step['depends_on'])}" if step["depends_on"] else ""
+            lines.append(f"  [{i}] {step['capability']:<12} {step['description']}")
+            lines.append(f"       {step['model']:<32} {cost_str}{deps}")
+            lines.append("")
+
+        return "\n".join(lines)

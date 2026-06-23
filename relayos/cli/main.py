@@ -801,6 +801,25 @@ def session_list(limit: int):
         click.echo(f"{s['id']:<20} {s['name']:<25} {s['mode']:<8} {cap:<12} {strat:<12} {s['msg_count']:<6}")
 
 
+@session.command("plan")
+@click.argument("task", nargs=-1, required=True)
+@click.option("-p", "--profile", default="balanced", help="Routing profile")
+def session_plan(task: tuple[str], profile: str):
+    """Show the capability graph for a task without executing.
+
+    Visualizes how the task would be decomposed across models.
+
+    Example:
+        relay session plan "Build a payment system"
+    """
+    from relayos.core.conversation import ConversationEngine
+    from relayos.core.planner import ExecutionPlanner
+    planner = ExecutionPlanner()
+    full = " ".join(task)
+    graph = planner.build_capability_graph(full, profile)
+    click.echo(planner.format_graph(graph))
+
+
 @session.command("timeline")
 @click.argument("session_id")
 @click.option("-n", "--limit", default=20, type=int, help="Number of events")

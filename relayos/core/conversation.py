@@ -112,6 +112,10 @@ class ConversationEngine:
         # Store task
         self.sessions.add_message(session.id, "user", "user", task, "task")
 
+        # Generate capability graph
+        graph = self.planner.build_capability_graph(task, profile)
+        self.sessions.set_last_used(session.id, capability=graph["task_type"], strategy=profile)
+
         # Plan execution
         plan = self.planner.plan(task, profile)
         results = []
@@ -220,3 +224,8 @@ class ConversationEngine:
     def list_sessions(self, limit: int = 10) -> list[dict]:
         """List all recent sessions."""
         return self.sessions.list_sessions(limit)
+
+    def plan_capability(self, task: str, profile: str = "balanced") -> dict:
+        """Generate a capability graph for a task without executing."""
+        graph = self.planner.build_capability_graph(task, profile)
+        return graph
