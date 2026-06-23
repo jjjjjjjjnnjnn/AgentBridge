@@ -732,6 +732,28 @@ def session_ask(task: tuple[str], profile: str):
     click.echo(f"\n[OK] {len(result['results'])} steps completed")
 
 
+@session.command("use")
+@click.argument("session_id")
+@click.argument("worker_name")
+def session_use(session_id: str, worker_name: str):
+    """Switch the default worker/model for a session.
+
+    Future messages in this session will use this terminal.
+
+    Example:
+        relay session use sess-abc opencode
+        relay session use sess-abc claude
+    """
+    from relayos.core.session import SessionStore
+    ss = SessionStore()
+    sess = ss.get_session(session_id)
+    if not sess:
+        click.echo(f"[ERR] Session '{session_id}' not found", err=True)
+        return
+    ss.set_last_used(session_id, worker_name)
+    click.echo(f"[OK] Session '{session_id}' now uses '{worker_name}'")
+
+
 @session.command("group")
 @click.argument("message", nargs=-1, required=True)
 @click.option("-p", "--participants", default="researcher,architect,coder,reviewer",
@@ -771,10 +793,11 @@ def session_list(limit: int):
     if not sessions:
         click.echo("No sessions yet.")
         return
-    click.echo(f"{'ID':<20} {'Name':<30} {'Mode':<8} {'Messages':<10} {'Updated'}")
+    click.echo(f"{'ID':<20} {'Name':<30} {'Mode':<8} {'Worker':<12} {'Msgs':<6} {'Updated'}")
     click.echo("-" * 80)
     for s in sessions:
-        click.echo(f"{s['id']:<20} {s['name']:<30} {s['mode']:<8} {s['msg_count']:<10} {s['updated_at']}")
+        worker = s.get('last_worker', '') or '-'
+        click.echo(f"{s['id']:<20} {s['name']:<30} {s['mode']:<8} {worker:<12} {s['msg_count']:<6} {s['updated_at']}")
 
 
 @session.command("timeline")

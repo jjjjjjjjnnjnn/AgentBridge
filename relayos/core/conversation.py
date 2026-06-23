@@ -59,15 +59,18 @@ class ConversationEngine:
         # Determine target worker
         target = worker_name
         if not target:
-            # Auto-route via scheduler
-            route = self.scheduler.route(message, profile=session.profile)
-            target = route.provider
-            logger.info(f"Auto-routed to {target} ({route.model})")
+            # Use last worker from session if available
+            if session.last_worker:
+                target = session.last_worker
+                logger.info(f"Using last worker: {target}")
+            else:
+                # Auto-route via scheduler
+                route = self.scheduler.route(message, profile=session.profile)
+                target = route.provider
 
         # Get worker or create temporary
         worker = self.workers.get(target)
         if not worker:
-            # Use adapter directly
             route = self.scheduler.route(message, profile=session.profile)
             try:
                 adapter = get_adapter(route.provider, {
@@ -83,10 +86,12 @@ class ConversationEngine:
                 model_used = route.model
                 tokens = 0
         else:
-            # Use worker's existing adapter
             result = self.workers.run(target, message)
             model_used = worker.model
             tokens = 0
+
+        # Remember last worker/model for this session
+        self.sessions.set_last_used(session.id, target, model_used)
 
         # Store assistant message
         self.sessions.add_message(
