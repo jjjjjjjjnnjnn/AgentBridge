@@ -618,6 +618,62 @@ def use(terminal_name: str | None, list_flag: bool):
     click.echo("Try: opencode, mimo, claude, free, balanced, quality")
 
 
+# ─── Execution Planner ──────────────────────────────────────
+
+
+@cli.command()
+@click.argument("task", nargs=-1, required=True)
+@click.option("-p", "--profile", default="balanced", help="Routing profile: free, balanced, quality")
+@click.option("--execute", "-x", is_flag=True, help="Execute the plan immediately")
+def plan(task: tuple[str], profile: str, execute: bool):
+    """Plan and execute multi-step tasks.
+
+    Analyzes a task, decomposes it into steps, assigns optimal
+    models, and optionally executes the full plan.
+
+    Examples:
+        relay plan "Implement JWT auth in FastAPI"
+        relay plan "Review this codebase" -x
+        relay plan "Design a payment system" --profile quality
+    """
+    from relayos.core.planner import ExecutionPlanner
+    planner = ExecutionPlanner()
+    task_str = " ".join(task)
+    p = planner.plan(task_str, profile)
+    click.echo(planner.format_plan(p))
+
+    if execute:
+        click.echo("Executing plan...")
+        from relayos.core.worker import WorkerManager
+        from relayos.adapters import get_adapter
+        from relayos.config import load_config
+        cfg = load_config()
+
+        context = {}
+        for i, step in enumerate(p.steps):
+            click.echo(f"\n  [{i+1}/{len(p.steps)}] {step.description}...")
+            prompt = step.prompt_template.format(task=task_str)
+            # Resolve template variables from previous steps
+            for k, v in context.items():
+                prompt = prompt.replace("{{" + k + "}}", str(v))
+
+            adapter = get_adapter(step.provider, {
+                "api_key": cfg.resolve_api_key(step.provider),
+                "model": step.model,
+            })
+            try:
+                response = adapter.chat(prompt)
+                step.status = "done"
+                context[step.id] = response.content
+                click.echo(f"  ✓ {len(response.content)} chars")
+            except Exception as e:
+                step.status = "error"
+                click.echo(f"  ✗ {e}", err=True)
+
+        done = sum(1 for s in p.steps if s.status == "done")
+        click.echo(f"\n[OK] {done}/{len(p.steps)} steps completed")
+
+
 @cli.command()
 @click.argument("profile_name", default="balanced")
 def profile(profile_name: str):
