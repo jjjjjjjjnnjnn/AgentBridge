@@ -1,4 +1,4 @@
-"""CLI entry point — `agentmesh run workflow.yaml` and more."""
+"""CLI entry point -- `agentbridge run workflow.yaml` and more."""
 from __future__ import annotations
 
 import logging
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from agentmesh import __version__
+from agentbridge import __version__
 from agentbridge.adapters import get_adapter, list_adapters
 from agentbridge.config import load_config
 from agentbridge.memory.store import MemoryStore
@@ -16,9 +16,9 @@ from agentbridge.workflow.models import Workflow, validate_workflow
 
 
 @click.group()
-@click.version_option(version=__version__, message="AgentMesh v%(version)s")
+@click.version_option(version=__version__, message="AgentBridge v%(version)s")
 def cli():
-    """AgentMesh — Multi-agent orchestration for AI tools.
+    """AgentBridge — Multi-agent orchestration for AI tools.
 
     Run workflows across Claude, GPT, Gemini and local models
     with shared memory and MCP tool integration.
@@ -58,7 +58,7 @@ def run(workflow_file: str, config: str | None, verbose: bool, list_adapters: bo
             click.echo(f"  [ERR] {e}", err=True)
         sys.exit(1)
 
-    click.echo("+ AgentMesh v" + __version__)
+    click.echo("+ AgentBridge v" + __version__)
     click.echo("| Workflow: " + wf.name)
     click.echo("| Steps: " + str(len(wf.steps)))
     for i, step in enumerate(wf.steps):
@@ -121,21 +121,24 @@ def chat(agent_name: str, prompt: tuple[str], model: str | None, config: str | N
 @cli.command()
 def agents():
     """List all available agent adapters and their default models."""
+    from agentbridge.adapters import list_adapters
+    from agentbridge.config import PROVIDER_ENV_MAP
+
     click.echo("Available agents:")
     click.echo(f"{'Name':<15} {'Provider':<12} {'Default Model':<30} {'Config Key'}")
     click.echo("-" * 80)
-
-    from agentbridge.adapters import _REGISTRY
-    for name, cls in sorted(_REGISTRY.items()):
-        provider = cls.provider if hasattr(cls, "provider") else name
-        default = cls.default_model if hasattr(cls, "default_model") else "-"
-        key_hint = {
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GEMINI_API_KEY",
-            "deepseek": "DEEPSEEK_API_KEY",
-        }.get(name, "-")
-        click.echo(f"{name:<15} {provider:<12} {default:<30} {key_hint}")
+    for name in list_adapters():
+        from agentbridge.adapters import get_adapter
+        try:
+            inst = get_adapter(name, {})
+            provider = getattr(inst, "provider", name)
+            default = getattr(inst, "default_model", "-")
+            key_hint = PROVIDER_ENV_MAP.get(name, "-")
+            if not key_hint:
+                key_hint = "-"
+            click.echo(f"{name:<15} {provider:<12} {default:<30} {key_hint}")
+        except Exception:
+            click.echo(f"{name:<15} {'?':<12} {'?':<30} {'?'}")
 
 
 @cli.command()
@@ -182,13 +185,14 @@ def memory_list(db: str):
 @click.option("--db", default="~/.agentbridge/memory.db", help="DB path")
 def init(db: str):
     """Create default config file."""
-    config_path = Path.home() / ".agentmesh" / "config.yaml"
+    from agentbridge.config import get_config_dir
+    config_path = get_config_dir() / "config.yaml"
     if config_path.exists():
         click.echo(f"Config already exists: {config_path}")
         return
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text("""# AgentMesh Configuration
+    config_path.write_text("""# AgentBridge Configuration
 # Set API keys via environment variables or uncomment below.
 
 providers:
@@ -241,7 +245,7 @@ routing:
 mcp_servers: {}
 """)
     click.echo(f"[OK] Created {config_path}")
-    click.echo("  Edit it to add your API keys, then run: agentmesh run <workflow.yaml>")
+    click.echo("  Edit it to add your API keys, then run: agentbridge run <workflow.yaml>")
 
 
 # ─── Terminal Management ─────────────────────────────────────────
@@ -297,7 +301,7 @@ def terminal_list(type_filter: str | None, config: str | None):
     instances = pool.list(type_filter=type_filter)
 
     if not instances:
-        click.echo("No terminals. Create one: agentmesh terminal create claude")
+        click.echo("No terminals. Create one: agentbridge terminal create claude")
         return
 
     h = f"{'ID':<20} {'Name':<20} {'Type':<12} {'Model':<30} {'Status':<10} {'Tasks':<8}"

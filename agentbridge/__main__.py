@@ -1,4 +1,4 @@
-"""Allow `python -m agentmesh`."""
+"""Allow `python -m agentbridge`."""
 from agentbridge.cli.main import cli
 
 if __name__ == "__main__":

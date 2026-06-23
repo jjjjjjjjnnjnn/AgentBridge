@@ -54,32 +54,31 @@ class TerminalPool:
 
     def _init_db(self):
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._db_path)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS terminals (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                model TEXT NOT NULL DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'idle',
-                created_at TEXT NOT NULL,
-                last_used TEXT,
-                task_count INTEGER DEFAULT 0,
-                total_tokens INTEGER DEFAULT 0
-            )
-        """)
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self._db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS terminals (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    model TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'idle',
+                    created_at TEXT NOT NULL,
+                    last_used TEXT,
+                    task_count INTEGER DEFAULT 0,
+                    total_tokens INTEGER DEFAULT 0
+                )
+            """)
+            conn.commit()
 
     def _load_from_db(self):
-        conn = sqlite3.connect(self._db_path)
-        rows = conn.execute("SELECT * FROM terminals ORDER BY created_at").fetchall()
-        conn.close()
+        with sqlite3.connect(self._db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM terminals ORDER BY created_at").fetchall()
         for row in rows:
             inst = TerminalInstance(
-                id=row[0], type=row[1], name=row[2], model=row[3] or "",
-                status=row[4], created_at=row[5], last_used=row[6],
-                task_count=row[7] or 0, total_tokens=row[8] or 0,
+                id=row["id"], type=row["type"], name=row["name"], model=row["model"] or "",
+                status=row["status"], created_at=row["created_at"], last_used=row["last_used"],
+                task_count=row["task_count"] or 0, total_tokens=row["total_tokens"] or 0,
             )
             with self._lock:
                 self._terminals[inst.id] = inst
@@ -96,20 +95,18 @@ class TerminalPool:
                         self._counter = n
 
     def _save_to_db(self, inst: TerminalInstance):
-        conn = sqlite3.connect(self._db_path)
-        conn.execute(
-            "INSERT OR REPLACE INTO terminals VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (inst.id, inst.type, inst.name, inst.model, inst.status,
-             inst.created_at, inst.last_used, inst.task_count, inst.total_tokens),
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self._db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO terminals VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (inst.id, inst.type, inst.name, inst.model, inst.status,
+                 inst.created_at, inst.last_used, inst.task_count, inst.total_tokens),
+            )
+            conn.commit()
 
     def _delete_from_db(self, terminal_id: str):
-        conn = sqlite3.connect(self._db_path)
-        conn.execute("DELETE FROM terminals WHERE id = ?", (terminal_id,))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self._db_path) as conn:
+            conn.execute("DELETE FROM terminals WHERE id = ?", (terminal_id,))
+            conn.commit()
 
     def _next_id(self, type_name: str) -> str:
         with self._lock:
@@ -165,24 +162,31 @@ class TerminalPool:
         return instances
 
     def run(self, terminal_id: str, prompt: str, **kwargs) -> TerminalResult:
-        """Run a prompt on a specific terminal."""
-        inst = self.get(terminal_id)
-        if not inst:
-            return TerminalResult(
-                content="", terminal_id=terminal_id, type="", model="",
-                exit_code=-1, error=f"Terminal '{terminal_id}' not found",
-            )
+        """Run a prompt on a specific terminal (thread-safe)."""
+        with self._lock:
+            inst = self.get(terminal_id)
+            if not inst:
+                return TerminalResult(
+                    content="", terminal_id=terminal_id, type="", model="",
+                    exit_code=-1, error=f"Terminal '{terminal_id}' not found",
+                )
+            adapter = self._adapters.get(terminal_id)
+            if not adapter:
+                return TerminalResult(
+                    content="", terminal_id=terminal_id, type=inst.type, model=inst.model,
+                    exit_code=-1, error=f"Adapter for '{terminal_id}' not found",
+                )
+            inst.status = "busy"
 
-        adapter = self._adapters.get(terminal_id)
-        if not adapter:
-            return TerminalResult(
-                content="", terminal_id=terminal_id, type=inst.type, model=inst.model,
-                exit_code=-1, error=f"Adapter for '{terminal_id}' not found",
-            )
-
-        inst.status = "busy"
         result = adapter.run(inst, prompt, **kwargs)
-        self._save_to_db(inst)
+
+        with self._lock:
+            inst.status = "idle" if result.exit_code == 0 else "error"
+            inst.last_used = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            inst.task_count += 1
+            if result.content:
+                inst.total_tokens += len(result.content) // 4
+            self._save_to_db(inst)
         return result
 
     def run_on_type(self, type_name: str, prompt: str, **kwargs) -> TerminalResult:
@@ -191,7 +195,7 @@ class TerminalPool:
             if inst.status == "idle":
                 return self.run(inst.id, prompt, **kwargs)
 
-        # No idle terminal found — create a new one automatically
+        # No idle terminal found -- create a new one automatically
         logger.info(f"No idle {type_name} terminal, creating one...")
         inst = self.create(type_name)
         return self.run(inst.id, prompt, **kwargs)

@@ -1,6 +1,7 @@
 """Agent configuration and provider settings."""
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,7 +9,26 @@ from typing import Optional
 
 import yaml
 
-DEFAULT_CONFIG_PATH = Path.home() / ".agentmesh" / "config.yaml"
+logger = logging.getLogger(__name__)
+
+DEFAULT_CONFIG_PATH = Path.home() / ".agentbridge" / "config.yaml"
+
+# Provider to environment variable mapping (used consistently across modules)
+PROVIDER_ENV_MAP: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "ollama": "",  # no key required
+}
+
+
+def get_config_dir() -> Path:
+    """Get config directory, respecting AGENTBRIDGE_CONFIG_DIR env var."""
+    override = os.environ.get("AGENTBRIDGE_CONFIG_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".agentbridge"
 
 
 @dataclass
@@ -27,7 +47,7 @@ class RoutingPolicy:
 
 
 @dataclass
-class AgentMeshConfig:
+class AgentBridgeConfig:
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
     routing: RoutingPolicy = field(default_factory=RoutingPolicy)
     memory: dict = field(default_factory=lambda: {"type": "sqlite", "path": "~/.agentbridge/memory.db"})
@@ -38,20 +58,19 @@ class AgentMeshConfig:
         cfg = self.providers.get(provider)
         if cfg and cfg.api_key:
             return cfg.api_key
-
-        env_map = {
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GEMINI_API_KEY",
-            "deepseek": "DEEPSEEK_API_KEY",
-        }
-        return os.environ.get(env_map.get(provider, ""))
+        env_var = PROVIDER_ENV_MAP.get(provider)
+        if env_var:
+            return os.environ.get(env_var)
+        return None
 
 
-def load_config(path: Optional[Path] = None) -> AgentMeshConfig:
-    path = path or DEFAULT_CONFIG_PATH
+def load_config(path: Optional[Path] = None) -> AgentBridgeConfig:
+    if not path:
+        config_dir = get_config_dir()
+        path = config_dir / "config.yaml"
     if not path.exists():
-        return AgentMeshConfig()
+        logger.warning(f"Config not found at {path}. Run 'agentbridge init' to create one.")
+        return AgentBridgeConfig()
 
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     providers = {}
@@ -74,7 +93,7 @@ def load_config(path: Optional[Path] = None) -> AgentMeshConfig:
     memory = raw.get("memory") or {"type": "sqlite", "path": "~/.agentbridge/memory.db"}
     terminals = raw.get("terminals") or []
 
-    return AgentMeshConfig(
+    return AgentBridgeConfig(
         providers=providers,
         routing=routing,
         memory=memory,

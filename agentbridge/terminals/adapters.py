@@ -78,7 +78,7 @@ class CustomTerminal(BaseTerminal):
 
     def build_command(self, instance: TerminalInstance, prompt: str, **kwargs) -> list[str]:
         template = self.config.get("command_template", "{binary} --prompt {prompt}")
-        cmd_str = template.format(binary=self.binary, prompt=prompt, model=instance.model)
-        # Split by spaces, but respect quoted strings
+        # Use simple replace instead of str.format() to avoid KeyError on {braces} in prompt
+        cmd_str = template.replace("{binary}", self.binary).replace("{prompt}", prompt).replace("{model}", instance.model)
         import shlex
         return shlex.split(cmd_str)

@@ -45,9 +45,12 @@ class Scheduler:
             if terminal_id:
                 result = self.pool.run(terminal_id, prompt, model=model)
             else:
-                # Create a temporary terminal for this step
+                # Create a temporary terminal for this step, then clean up
                 inst = self.pool.create(terminal_type, model=model)
-                result = self.pool.run(inst.id, prompt)
+                try:
+                    result = self.pool.run(inst.id, prompt)
+                finally:
+                    self.pool.remove(inst.id)
 
             # Store result
             key = save_as or f"step_{i+1}"

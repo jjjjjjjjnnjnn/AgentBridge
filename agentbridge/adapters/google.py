@@ -1,19 +1,22 @@
 """Google Gemini adapter."""
 from __future__ import annotations
 
-import json
+from urllib.parse import quote
 
-from agentbridge.adapters.base import AgentResponse, BaseAdapter
+import httpx
+
+from agentbridge.adapters.base import AdapterError, AgentResponse, BaseAdapter
 
 
 class GoogleAdapter(BaseAdapter):
     provider = "google"
     default_model = "gemini-2.5-flash"
+    env_key = "GEMINI_API_KEY"
 
     def _build_client(self):
-        import httpx
-
-        api_key = self.config.get("api_key") or ""
+        api_key = self._get_api_key()
+        if not api_key:
+            raise AdapterError(f"Missing API key. Set {self.env_key} env var or configure in config.")
         return httpx.Client(
             headers={"Content-Type": "application/json"},
             timeout=120,
@@ -27,7 +30,6 @@ class GoogleAdapter(BaseAdapter):
         client = self._build_client()
         model = kwargs.get("model") or self.model
 
-        # Convert OpenAI-style messages to Gemini format
         gemini_contents = []
         for m in messages:
             if m["role"] == "system":
@@ -44,18 +46,23 @@ class GoogleAdapter(BaseAdapter):
                 "temperature": kwargs.get("temperature", self.config.get("temperature", 0.7)),
             },
         }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model)}:generateContent"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        resp = client.post(url, json=body)
-        resp.raise_for_status()
+        try:
+            resp = client.post(url, json=body)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            detail = e.response.text[:300] if e.response else str(e)
+            raise AdapterError(f"{self.provider} API error {e.response.status_code}: {detail}")
+        except httpx.RequestError as e:
+            raise AdapterError(f"Connection to {self.provider} failed: {e}")
+
         data = resp.json()
-
         text = ""
         candidates = data.get("candidates", [])
         if candidates:
             for part in candidates[0].get("content", {}).get("parts", []):
                 text += part.get("text", "")
-
         return AgentResponse(
             content=text,
             model=model,

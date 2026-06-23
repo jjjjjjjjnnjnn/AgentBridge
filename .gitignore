@@ -11,7 +11,7 @@ build/
 *.key
 
 # Config (user-specific)
-.agentmesh/
+.agentbridge/
 
 # IDE
 .idea/
