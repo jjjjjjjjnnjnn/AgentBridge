@@ -1,11 +1,8 @@
-"""RelayOS Terminal UI — ccswitch-style AI workforce manager.
+"""RelayOS Terminal UI — AI Control Panel.
 
-Usage:
-    relay          # Open TUI (default command)
-    relay workers  # List workers
-    relay run      # Run workflow
-
-Like htop for your AI team. No browser, no server, no Docker.
+Like htop for your AI team.
+Switch profiles with one keypress.
+See everything at a glance.
 """
 from __future__ import annotations
 
@@ -23,268 +20,234 @@ from relayos.core.worker import WorkerManager
 
 
 def run_tui():
-    """Start the TUI. Blocks until 'q' is pressed."""
     import threading
-
     wm = WorkerManager()
     start_time = time.time()
     running = True
+    current_profile = ["balanced"]  # mutable for key handler
+    selected = [0]  # selected worker index
 
     def check_keys():
         nonlocal running
-        if sys.platform == "win32":
-            import msvcrt
-            while running:
-                if msvcrt.kbhit():
-                    key = msvcrt.getch().decode("utf-8", errors="ignore").lower()
-                    if key == "q":
-                        running = False
-                    elif key == "r":
-                        pass  # refresh is automatic
-                time.sleep(0.1)
-        else:
-            import select
-            import termios
-            import tty
-            fd = sys.stdin.fileno()
-            old = termios.tcgetattr(fd)
+        getch = _getch if sys.platform != "win32" else _getch_win
+        while running:
             try:
-                tty.setraw(fd)
-                while running:
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        key = sys.stdin.read(1).lower()
-                        if key == "q":
-                            running = False
-                        elif key == "r":
-                            pass
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                key = getch()
+                if key in ("q",): running = False
+                elif key == "r": pass  # auto-refresh
+                elif key == "f": _set_profile(current_profile, "free")
+                elif key == "b": _set_profile(current_profile, "balanced")
+                elif key == "q_": _set_profile(current_profile, "quality")
+                elif key == "o": _set_profile(current_profile, "opencode")
+                elif key == "m": _set_profile(current_profile, "mimo")
+                elif key == "c": _set_profile(current_profile, "claude")
+                elif key in "123456789":
+                    idx = int(key) - 1
+                    selected[0] = idx
+            except: break
 
-    key_thread = threading.Thread(target=check_keys, daemon=True)
-    key_thread.start()
+    kt = threading.Thread(target=check_keys, daemon=True)
+    kt.start()
 
     with Live(refresh_per_second=4, screen=True) as live:
         try:
             while running:
-                layout = _build_layout(wm, start_time)
+                layout = _build_layout(wm, start_time, current_profile[0], selected[0])
                 live.update(layout)
                 live.refresh()
-                time.sleep(2)  # refresh every 2s
+                time.sleep(1.5)
         except KeyboardInterrupt:
             pass
-
-    # Clear screen on exit
     print("\033[2J\033[H", end="")
 
 
-def _build_layout(wm: WorkerManager, start_time: float) -> Layout:
-    """Build the main layout."""
+def _set_profile(store: list, profile: str):
+    store[0] = profile
+    try:
+        from relayos.config import get_config_dir
+        import yaml
+        p = get_config_dir() / "config.yaml"
+        if p.exists():
+            c = yaml.safe_load(p.read_text()) or {}
+            c.setdefault("routing", {})["default"] = profile
+            p.write_text(yaml.dump(c, default_flow_style=False), encoding="utf-8")
+    except: pass
+
+
+def _getch() -> str:
+    import termios, tty, select
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        if select.select([sys.stdin], [], [], 0.1)[0]:
+            return sys.stdin.read(1).lower()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return ""
+
+
+def _getch_win() -> str:
+    import msvcrt
+    if msvcrt.kbhit():
+        return msvcrt.getch().decode(errors="ignore").lower()
+    return ""
+
+
+def _build_layout(wm: WorkerManager, start: float, profile: str, sel: int) -> Layout:
     layout = Layout()
     layout.split_column(
         Layout(name="header", size=3),
         Layout(name="body", ratio=1),
         Layout(name="footer", size=3),
     )
-    layout["header"].update(_render_header(wm, start_time))
-    layout["body"].update(_render_body(wm))
-    layout["footer"].update(_render_footer(wm))
+    layout["header"].update(_render_header(wm, start, profile))
+    layout["body"].update(_render_body(wm, sel))
+    layout["footer"].update(_render_footer(wm, profile))
     return layout
 
 
-def _render_header(wm: WorkerManager, start_time: float) -> Panel:
-    """Top bar with system status."""
+def _render_header(wm: WorkerManager, start: float, profile: str) -> Panel:
     stats = wm.stats()
-    elapsed = int(time.time() - start_time)
-    text = Text()
-    text.append(" RelayOS ", style="bold blue")
-    text.append(f" Workers: {stats['total_workers']} ", style="cyan")
-    text.append(f" Idle: {stats['idle']} ", style="green")
-    text.append(f" Busy: {stats['busy']} ", style="yellow")
-    text.append(f" Tasks: {stats['total_tasks']} ", style="white")
-    text.append(f" [{elapsed}s] ", style="dim white")
-    return Panel(text, style="blue")
+    elapsed = int(time.time() - start)
+    t = Text()
+    t.append(" RelayOS ", style="bold blue")
+    t.append(f" Workers:{stats['total_workers']} ", style="cyan")
+    t.append(f" Idle:{stats['idle']} ", style="green")
+    t.append(f" Busy:{stats['busy']} ", style="yellow")
+    t.append(f" Tasks:{stats['total_tasks']} ", style="white")
+    t.append(f" [{elapsed}s] ", style="dim")
+    t.append(f" Profile:{profile} ", style="bold cyan" if profile in ("free",) else "white")
+    return Panel(t, style="blue")
 
 
-def _render_body(wm: WorkerManager) -> Layout:
-    """Two-panel body: workers + sidebar."""
+def _render_body(wm: WorkerManager, sel: int) -> Layout:
     body = Layout()
-    body.split_row(
-        Layout(name="workers", ratio=2),
-        Layout(name="sidebar", ratio=1),
-    )
-    body["workers"].update(_render_worker_table(wm))
-    body["sidebar"].update(_render_sidebar(wm))
+    body.split_row(Layout(name="workers", ratio=3), Layout(name="panel", ratio=2))
+    body["workers"].update(_render_workers(wm, sel))
+    body["panel"].update(_render_panel(wm))
     return body
 
 
-def _render_worker_table(wm: WorkerManager) -> Panel:
-    """Worker list like htop."""
+def _render_workers(wm: WorkerManager, sel: int) -> Panel:
     table = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
-    table.add_column("Worker", width=16)
-    table.add_column("Role", width=14)
-    table.add_column("Status", width=10)
-    table.add_column("Model", width=30)
+    table.add_column("#", width=2)
+    table.add_column("Worker", width=14)
+    table.add_column("Status", width=8)
+    table.add_column("Model", width=28)
     table.add_column("Tasks", justify="right", width=5)
-    table.add_column("Inbox", justify="right", width=5)
 
     team = wm.get_team()
-    for w in team:
-        status_style = {"idle": "green", "busy": "yellow", "error": "red"}.get(w["status"], "white")
+    for i, w in enumerate(team):
+        sel_style = "reverse" if i == sel else ""
         s = w["status"]
-        if w["status"] == "busy":
-            s = "● busy"
-        elif w["status"] == "idle":
-            s = "○ idle"
-        unread = str(w["unread"]) if w["unread"] else ""
-
+        ss = {"idle": "green", "busy": "yellow", "error": "red"}.get(s, "white")
+        label = f"● {s}" if s == "busy" else f"○ {s}" if s == "idle" else s
         table.add_row(
+            str(i + 1) if i == sel else " ",
             f"{w['emoji']} {w['name']}",
-            w["role"],
-            Text(s, style=status_style),
-            f"{w['provider']}/{w['model']}",
+            Text(label, style=ss),
+            f"{w['provider']}/{w['model'][:20]}",
             str(w["task_count"]),
-            unread,
+            style=sel_style,
         )
-    return Panel(table, title="[bold]Workers[/bold]", border_style="dim")
+    return Panel(table, title="[bold]Workers (1-9 select)[/bold]", border_style="dim")
 
 
-def _render_sidebar(wm: WorkerManager) -> Layout:
-    """Sidebar with inbox, cost, and tips."""
-    sb = Layout()
-    sb.split_column(
-        Layout(name="inbox", ratio=2),
-        Layout(name="cost", ratio=1),
-        Layout(name="tips", ratio=1),
-    )
-    sb["inbox"].update(_render_inbox(wm))
-    sb["cost"].update(_render_cost(wm))
-    sb["tips"].update(_render_tips())
-    return sb
+def _render_panel(wm: WorkerManager) -> Layout:
+    p = Layout()
+    p.split_column(Layout(name="info", ratio=2), Layout(name="actions", ratio=1))
+    p["info"].update(_render_info(wm))
+    p["actions"].update(_render_actions())
+    return p
 
 
-def _render_inbox(wm: WorkerManager) -> Panel:
-    """Recent inbox messages."""
+def _render_info(wm: WorkerManager) -> Panel:
+    from relayos.config import load_config
+    import yaml
     lines = []
-    team = wm.get_team()
-    for w in team:
-        if w["unread"]:
-            lines.append(f"  {w['emoji']} {w['name']}: {w['unread']} tasks")
-    if not lines:
-        lines.append("  All inboxes clear")
-    return Panel("\n".join(lines), title="[bold]Inbox[/bold]", border_style="dim")
-
-
-def _render_cost(wm: WorkerManager) -> Panel:
-    """Cost panel — per-provider token/cost summary."""
+    # Routing info
+    try:
+        cfg = load_config()
+        r = getattr(cfg, "routing", None)
+        if r:
+            lines.append(f"  Profile: {r.default}")
+    except: pass
+    lines.append("")
+    # Cost
     try:
         from relayos.cost import CostManager
-        cm = CostManager()
-        report = cm.get_report()
-        lines = []
-        for pname, pdata in report.get("providers", {}).items():
-            cost = pdata["cost"]
-            if cost > 0:
-                lines.append(f"  {pname:<12} ${cost:.4f}")
-            else:
-                lines.append(f"  {pname:<12} free")
-        if not lines:
-            lines.append("  No usage yet")
-        return Panel("\n".join(lines), title="[bold]Today's Cost[/bold]", border_style="dim")
-    except Exception:
-        return Panel("  Cost tracking inactive", title="[bold]Cost[/bold]", border_style="dim")
-
-
-def _render_tips() -> Panel:
-    """Quick tips."""
-    tips = Text()
-    tips.append("\n").append(" Quick commands:", style="bold cyan")
-    tips.append("\n").append("  relay use opencode", style="dim")
-    tips.append("\n").append("  relay use mimo", style="dim")
-    tips.append("\n").append("  relay use claude", style="dim")
-    tips.append("\n").append("  relay focus <name>", style="dim")
-    tips.append("\n").append("  relay run workflow.yaml", style="dim")
-    tips.append("\n").append("  relayos serve (web UI)", style="dim")
-    tips.append("\n").append("\n [q] quit | auto-refresh 2s", style="italic dim")
-    return Panel(tips, title="[bold]Commands[/bold]", border_style="dim")
-
-
-def _render_footer(wm: WorkerManager) -> Panel:
-    """Status bar with cost and inbox stats."""
-    stats = wm.stats()
-    text = Text()
-    text.append(" STATUS: ", style="bold green")
-    text.append(f"{stats['total_workers']} workers online", style="green")
-    text.append("  |  ", style="dim")
-    # Inbox count via StateStore
+        r = CostManager().get_report()
+        if r["total_cost"] > 0:
+            lines.append(f"  Cost: ${r['total_cost']:.4f}")
+        else:
+            lines.append("  Cost: $0.00")
+        for p, d in list(r.get("providers", {}).items())[:3]:
+            lines.append(f"    {p}: ${d['cost']:.4f}")
+    except: pass
+    lines.append("")
+    # Tasks
     try:
         from relayos.core.state import StateStore
         ss = StateStore()
-        ic = ss.inbox_count()
-        if ic:
-            text.append(f"Inbox: {ic}", style="yellow")
-        else:
-            text.append("Inbox: 0", style="dim")
-    except Exception:
-        text.append("Inbox: -", style="dim")
-    text.append("  |  ", style="dim")
-    # Profile / terminal
+        lines.append(f"  Pending: {ss.inbox_count()}")
+    except: pass
+    return Panel("\n".join(lines), title="[bold]Status[/bold]", border_style="dim")
+
+
+def _render_actions() -> Panel:
+    tips = Text()
+    tips.append(" Profile: f=free b=balanced q=quality\n", style="bold cyan")
+    tips.append(" Terminal: o=opencode m=mimo c=claude\n", style="dim")
+    tips.append(" Commands:\n", style="bold cyan")
+    tips.append("  1-9 select worker\n", style="dim")
+    tips.append("  r refresh  q quit\n", style="dim")
+    return Panel(tips, title="[bold]Actions[/bold]", border_style="dim")
+
+
+def _render_footer(wm: WorkerManager, profile: str) -> Panel:
+    stats = wm.stats()
+    t = Text()
+    t.append(f" {stats['total_workers']}w {stats['idle']}i {stats['busy']}b", style="green")
+    t.append("  |  ", style="dim")
+
     try:
-        from relayos.config import load_config
-        cfg = load_config()
-        current = cfg.routing.default if hasattr(cfg, 'routing') and cfg.routing else "balanced"
-        text.append(f"Use: {current}", style="cyan")
-    except Exception:
-        text.append("Use: -", style="dim")
-    text.append("  |  ", style="dim")
-    # Total cost
+        from relayos.core.state import StateStore
+        ic = StateStore().inbox_count()
+        t.append(f"inbox:{ic}", style="yellow" if ic else "dim")
+    except: t.append("inbox:-", style="dim")
+    t.append("  |  ", style="dim")
+
     try:
         from relayos.cost import CostManager
-        cm = CostManager()
-        report = cm.get_report()
-        if report["total_cost"] > 0:
-            text.append(f"Cost: ${report['total_cost']:.4f}", style="white")
-        else:
-            text.append("Cost: $0", style="dim")
-    except Exception:
-        text.append("Cost: -", style="dim")
-    text.append("  |  ", style="dim")
-    text.append("~/.relayos/  ", style="dim")
-    text.append("  |  ", style="dim")
-    text.append("[q] quit  [f] focus  [r] refresh", style="italic dim")
-    return Panel(text, style="green", height=3)
+        r = CostManager().get_report()
+        t.append(f"${r['total_cost']:.4f}", style="white" if r['total_cost'] > 0 else "dim")
+    except: t.append("$0", style="dim")
+    t.append("  |  ", style="dim")
 
-
-# ── CLI entry point ─────────────────────────────────────────
+    t.append(f"[{profile}]", style="cyan")
+    t.append("  |  q=quit 1-9=select f/b/q/o/m/c=switch", style="dim")
+    return Panel(t, style="green", height=3)
 
 
 def main():
-    """Entry point for 'relay' command."""
     import argparse
-    parser = argparse.ArgumentParser(description="RelayOS — AI Workforce Manager")
-    parser.add_argument("command", nargs="?", default="ui", help="Command: ui, workers, run")
-    parser.add_argument("args", nargs="*", help="Additional arguments")
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="RelayOS — AI Control Panel")
+    p.add_argument("cmd", nargs="?", default="ui")
+    p.add_argument("args", nargs="*")
+    a = p.parse_args()
 
-    if args.command in ("ui", "tui", ""):
+    if a.cmd in ("ui", "tui", ""):
         run_tui()
-    elif args.command == "workers":
+    elif a.cmd == "workers":
         wm = WorkerManager()
-        team = wm.get_team()
-        for w in team:
+        for w in wm.get_team():
             print(f"{w['emoji']} {w['name']:<15} {w['role']:<14} {w['status']:<8} {w['provider']}")
-    elif args.command == "inbox":
-        from relayos.core.inbox import WorkerInbox
-        inbox = WorkerInbox()
-        stats = inbox.get_stats()
-        print(f"Inbox: {stats['unread']} unread of {stats['total']} total")
-        for worker, count in stats.get("per_worker", {}).items():
-            print(f"  {worker}: {count}")
     else:
-        # Try running as a CLI command
-        from relayos.cli.main import cli
-        import sys
-        sys.argv = ["relay", args.command] + args.args
-        cli()
+        from relayos.cli.main import cli as cli_main
+        import sys as _sys
+        _sys.argv = ["relay", a.cmd] + a.args
+        cli_main()
 
 
 if __name__ == "__main__":

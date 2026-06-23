@@ -226,7 +226,7 @@ class WorkerManager:
                 "description": w.description,
                 "task_count": w.task_count,
                 "unread": unread,
-                "memory_keys": len(worker_keys),
+                "memory_keys": worker_keys,
             })
         return result
 
