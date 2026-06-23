@@ -44,6 +44,7 @@ BugTracker = "https://github.com/jjjjjjjjnnjnn/relayos/issues"
 
 [project.scripts]
 relayos = "relayos.cli.main:cli"
+relay = "relayos.tui.app:main"
 
 [project.entry-points."relayos.adapters"]
 openai = "relayos.adapters.openai:OpenAIAdapter"
