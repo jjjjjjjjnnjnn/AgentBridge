@@ -397,7 +397,36 @@ def terminal_exec(type_name: str, prompt: tuple[str], model: str | None, config:
     click.echo(f"\n[Duration: {result.duration_ms}ms | Model: {result.model}]")
 
 
-# ─── Server ─────────────────────────────────────────────────
+# ─── Cost Manager ───────────────────────────────────────────
+
+
+@cli.group()
+def cost():
+    """Track API usage and costs across providers."""
+    pass
+
+
+@cost.command("report")
+@click.option("--db", default="~/.relayos/cost.db", help="Cost DB path")
+def cost_report(db: str):
+    """Show API usage and cost summary."""
+    from relayos.cost import CostManager
+    cm = CostManager(db)
+    click.echo(cm.get_summary())
+
+
+@cost.command("track")
+@click.argument("provider")
+@click.argument("model")
+@click.option("--input", "in_tokens", default=0, type=int)
+@click.option("--output", "out_tokens", default=0, type=int)
+@click.option("--db", default="~/.relayos/cost.db", help="Cost DB path")
+def cost_track(provider: str, model: str, in_tokens: int, out_tokens: int, db: str):
+    """Manually record API usage."""
+    from relayos.cost import CostManager
+    cm = CostManager(db)
+    cm.track(provider, model, in_tokens, out_tokens)
+    click.echo(f"[OK] Recorded {provider}/{model}: {in_tokens} in / {out_tokens} out")
 
 
 @cli.command()

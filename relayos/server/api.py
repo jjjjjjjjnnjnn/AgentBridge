@@ -149,6 +149,17 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
                     t0 = time.time()
                     resp = adapter.chat_with_context(messages)
                     duration = int((time.time() - t0) * 1000)
+
+                    # Track cost
+                    try:
+                        usage = resp.usage or {}
+                        cost_mgr.track(
+                            provider=step.agent, model=resp.model,
+                            input_tokens=usage.get("input_tokens", usage.get("prompt_tokens", 0)),
+                            output_tokens=usage.get("output_tokens", usage.get("completion_tokens", 0)),
+                        )
+                    except Exception:
+                        pass
                     results.append({
                         "step": i + 1, "agent": step.agent,
                         "model": resp.model, "content": resp.content,
@@ -185,6 +196,15 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
     async def delete_memory(key: str):
         memory.set(key, None)
         return {"ok": True}
+
+    # ── Cost ────────────────────────────────────────────────────
+
+    from relayos.cost import CostManager
+    cost_mgr = CostManager()
+
+    @app.get("/api/cost")
+    async def get_cost_report():
+        return cost_mgr.get_report()
 
     # ── Frontend ────────────────────────────────────────────────
 

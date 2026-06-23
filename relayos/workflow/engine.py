@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional
 
 from relayos.adapters import get_adapter
 from relayos.config import RelayOSConfig
+from relayos.cost import CostManager
 from relayos.memory.store import MemoryStore
 from relayos.workflow.models import Workflow, WorkflowStep
 
@@ -90,6 +91,19 @@ class WorkflowEngine:
                 "duration_ms": duration,
             }
             results.append(step_result)
+
+            # Track cost
+            try:
+                cost_mgr = CostManager()
+                usage = response.usage or {}
+                cost_mgr.track(
+                    provider=step.agent,
+                    model=response.model,
+                    input_tokens=usage.get("input_tokens", usage.get("prompt_tokens", 0)),
+                    output_tokens=usage.get("output_tokens", usage.get("completion_tokens", 0)),
+                )
+            except Exception:
+                pass  # cost tracking is non-critical
 
             # Save to memory
             key = step.save_as or f"step_{i+1}"

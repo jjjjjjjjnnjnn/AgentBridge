@@ -15,6 +15,7 @@
     <button class="nav-item" data-page="terminals">💻 Terminals</button>
     <button class="nav-item" data-page="workflows">🔄 Workflows</button>
     <button class="nav-item" data-page="memory">🧠 Memory</button>
+    <button class="nav-item" data-page="cost">💰 Cost</button>
     <div style="flex:1"></div>
     <div class="nav-item" style="font-size:11px;color:var(--text-dim);cursor:default">
       v<span id="version">...</span>
@@ -93,6 +94,17 @@
       </div>
     </div>
 
+    <!-- Cost Page -->
+    <div class="page" id="page-cost">
+      <div class="card-header"><h1>💰 Usage & Cost</h1>
+        <button class="btn btn-sm" onclick="loadCost()">🔄 Refresh</button>
+      </div>
+      <div class="stats-grid" id="cost-stats"></div>
+      <div class="card"><table><thead><tr><th>Provider</th><th>Calls</th><th>Input Tokens</th><th>Output Tokens</th><th>Cost</th></tr></thead>
+        <tbody id="cost-tbody"></tbody>
+      </table></div>
+    </div>
+
   </main>
 </div>
 
@@ -107,6 +119,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     if (el.dataset.page === 'dashboard') refreshDashboard();
     if (el.dataset.page === 'terminals') refreshTerminals();
     if (el.dataset.page === 'memory') loadMemory();
+    if (el.dataset.page === 'cost') loadCost();
   });
 });
 
@@ -332,6 +345,20 @@ async function showMemory(key) {
     document.getElementById('memory-detail').style.display = 'block';
     document.getElementById('memory-detail-key').textContent = '🔑 ' + data.key;
     document.getElementById('memory-detail-value').textContent = data.value;
+  } catch(e) { console.error(e); }
+}
+
+// ── Cost ──────────────────────────────────────────────────
+async function loadCost() {
+  try {
+    const r = await api('/api/cost');
+    document.getElementById('cost-stats').innerHTML =
+      `<div class="stat-card"><div class="value">$${r.total_cost.toFixed(4)}</div><div class="label">Total Cost</div></div>` +
+      `<div class="stat-card"><div class="value">${r.total_calls}</div><div class="label">API Calls</div></div>` +
+      `<div class="stat-card"><div class="value">${Object.keys(r.providers).length}</div><div class="label">Providers Used</div></div>`;
+    document.getElementById('cost-tbody').innerHTML = Object.entries(r.providers || {}).map(([name, p]) =>
+      `<tr><td><strong>${name}</strong></td><td>${p.calls}</td><td>${p.input_tokens}</td><td>${p.output_tokens}</td><td>$${p.cost.toFixed(4)}</td></tr>`
+    ).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim)">No usage recorded.</td></tr>';
   } catch(e) { console.error(e); }
 }
 
