@@ -1,0 +1,47 @@
+# Simple 3-step debate pipeline
+# Two agents argue different positions, a third judges.
+
+name: "AI Debate: Local vs Cloud LLMs"
+description: "Two agents debate, one synthesizes a conclusion"
+
+vars:
+  topic: "Local LLMs vs Cloud LLMs for enterprise deployment"
+
+steps:
+  - agent: claude
+    system: >
+      You are arguing FOR local LLMs in an enterprise context.
+      Make the strongest possible case. Be specific about costs,
+      privacy, latency, and control.
+    prompt: >
+      Argue why enterprises should deploy local LLMs (via Ollama,
+      vLLM, etc.) instead of using cloud APIs. Topic: {{topic}}
+    save_as: position_a
+
+  - agent: gpt
+    system: >
+      You are arguing FOR cloud LLM APIs in an enterprise context.
+      Make the strongest possible case. Be specific about capability,
+      maintenance, scalability, and innovation speed.
+    prompt: >
+      Argue why enterprises should use cloud LLM APIs (OpenAI,
+      Anthropic, Google) instead of local deployment. Topic: {{topic}}
+    save_as: position_b
+
+  - agent: gemini
+    system: "You are an impartial judge. Analyze both arguments fairly."
+    prompt: >
+      Based on these two positions:
+
+      POSITION A (Local LLMs):
+      {{position_a}}
+
+      POSITION B (Cloud LLMs):
+      {{position_b}}
+
+      Provide a balanced synthesis that:
+      1. Acknowledges the strongest points from each side
+      2. Identifies which arguments are context-dependent
+      3. Gives a recommendation: when to choose each approach
+      4. Suggests a hybrid strategy if applicable
+    save_as: conclusion

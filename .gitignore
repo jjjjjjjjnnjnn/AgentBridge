@@ -1,0 +1,29 @@
+# AgentMesh
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+*.key
+
+# Config (user-specific)
+.agentmesh/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Memory DB (created at runtime)
+*.db
+*.db-journal
+*.db-wal

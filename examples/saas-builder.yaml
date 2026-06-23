@@ -1,0 +1,52 @@
+# Multi-Agent SaaS Builder
+# This workflow demonstrates AgentMesh core feature:
+# multiple agents collaborating with shared context.
+
+name: "SaaS Builder Pipeline"
+description: "Research → Design → Code → Review with 4 different AI agents"
+
+steps:
+  - agent: gemini
+    prompt: >
+      Research the competitive landscape for an AI-powered note-taking SaaS.
+      List the top 5 competitors, their key features, pricing, and what gaps
+      exist in the market. Be specific.
+    save_as: research
+
+  - agent: claude
+    prompt: >
+      Based on this competitive research:
+      {{research}}
+
+      Design a system architecture for a new AI note-taking app that fills
+      the gaps identified above. Include:
+      1. Tech stack recommendations
+      2. Core features and data model
+      3. API architecture
+      4. Key differentiators
+    save_as: architecture
+
+  - agent: gpt
+    prompt: >
+      Here is the architecture design:
+      {{architecture}}
+
+      Implement the core API endpoints for this note-taking app.
+      Focus on the CRUD operations for notes, authentication, and the
+      AI-powered search endpoint. Provide complete code with error handling.
+    save_as: code
+
+  - agent: deepseek
+    prompt: >
+      Review this code for security vulnerabilities and bugs:
+      {{code}}
+
+      Check for:
+      1. SQL injection or injection vulnerabilities
+      2. Authentication/authorization issues
+      3. Data validation problems
+      4. Performance concerns
+      5. Any bugs in the logic
+
+      Provide specific fixes for each issue found.
+    save_as: review

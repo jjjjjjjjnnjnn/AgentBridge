@@ -1,0 +1,60 @@
+# LinguaGraph Research Pipeline
+# Multi-agent analysis for BWKI 2026 submission.
+# Routes subtasks by agent strength.
+
+name: "LinguaGraph Research Analysis"
+description: "Analyze cross-lingual concept alignment using 3 specialized agents"
+
+vars:
+  topic: "freedom"
+  languages: "Chinese, English, German"
+
+steps:
+  - agent: gemini
+    system: "You are a cross-linguistic research analyst."
+    prompt: >
+      Analyze how the concept of "{{topic}}" is expressed across
+      {{languages}} in educational curricula.
+
+      Focus on:
+      1. Defining features of the concept in each language/culture
+      2. Semantic differences and nuances
+      3. How these differences might affect cross-lingual understanding
+
+      Be precise and cite specific examples where possible.
+    save_as: linguistic_analysis
+
+  - agent: claude
+    system: "You are a cognitive science researcher."
+    prompt: >
+      Based on this linguistic analysis:
+      {{linguistic_analysis}}
+
+      Design a cognitive space model that maps how "{{topic}}"
+      is conceptually structured across {{languages}}.
+
+      Include:
+      1. Key dimensions of variation
+      2. How concepts align or diverge
+      3. Implications for cross-lingual education
+      4. How this could be visualized
+    save_as: cognitive_model
+
+  - agent: gpt
+    system: "You are a scientific paper writer."
+    prompt: >
+      Based on the linguistic analysis and cognitive model:
+
+      LINGUISTIC ANALYSIS:
+      {{linguistic_analysis}}
+
+      COGNITIVE MODEL:
+      {{cognitive_model}}
+
+      Write a concise research finding (300 words) suitable for
+      a BWKI competition submission. Focus on:
+      1. The research question
+      2. Methodology
+      3. Key finding
+      4. Implications
+    save_as: finding
