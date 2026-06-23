@@ -1,4 +1,4 @@
-# AgentMesh Architecture
+# RelayOS Architecture
 
 ## Current (v0.1 — Alpha)
 
@@ -6,11 +6,11 @@
 User
  │
  ▼
-agentmesh run workflow.yaml
+relayos run workflow.yaml
  │
  ▼
 ┌─────────────────────────────────────┐
-│         AgentMesh Runtime            │
+│         RelayOS Runtime            │
 │                                      │
 │  ┌──────────┐  ┌───────────────┐    │
 │  │ Workflow  │─▶│ Agent Adapter │    │
@@ -39,13 +39,13 @@ Claude Code / Cursor / ChatGPT / Any MCP Client
                       │
                       ▼
 ┌────────────────────────────────────────────┐
-│           AgentMesh Gateway                 │
+│           RelayOS Gateway                 │
 │         (MCP Server + REST API)             │
 └──────────────────┬─────────────────────────┘
                    │
                    ▼
 ┌────────────────────────────────────────────┐
-│           AgentMesh Runtime                  │
+│           RelayOS Runtime                  │
 │                                              │
 │  ┌──────────────┐  ┌────────────────────┐   │
 │  │ Routing      │  │ Cost Manager       │   │
@@ -82,12 +82,12 @@ Each agent adapter is a standalone Python class registered via entry_points. Add
 
 ### 4. MCP Consumer (v0.1) → Hub (v1.0)
 
-Start by consuming MCP servers for tools. Graduate to exposing AgentMesh as an MCP server. Finally become a full bidirectional hub.
+Start by consuming MCP servers for tools. Graduate to exposing RelayOS as an MCP server. Finally become a full bidirectional hub.
 
 ## Data Flow
 
 ```
-1. User runs: agentmesh run workflow.yaml
+1. User runs: relayos run workflow.yaml
 2. Workflow Engine parses steps
 3. For each step, Agent Adapter calls the selected provider
 4. Memory layer stores/retrieves context automatically

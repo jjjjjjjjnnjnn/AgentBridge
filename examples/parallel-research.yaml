@@ -6,23 +6,23 @@ description: "Three agents research simultaneously, results merge"
 
 steps:
   # Step 1-3 run IN PARALLEL (via --parallel flag)
-  - agent: gemini
+  - agent: google
     prompt: "Research the latest MCP protocol updates and ecosystem trends in 2026."
     save_as: mcp_research
     parallel: true
 
-  - agent: opencode
+  - agent: openai
     prompt: "Analyze the open-source landscape for multi-agent orchestration tools. List top 5 projects with their GitHub stats."
     save_as: oss_analysis
     parallel: true
 
-  - agent: claude
+  - agent: anthropic
     prompt: "Design a system architecture for connecting multiple AI CLI tools (Claude Code, Mimo, OpenCode) into a unified coordination layer."
     save_as: architecture_design
     parallel: true
 
   # Step 4: merge (sequential, depends on parallel results)
-  - agent: gpt
+  - agent: openai
     prompt: >
       Synthesize these three research outputs into a coherent analysis:
 

@@ -140,11 +140,11 @@ Crea un archivo `hello.yaml`:
 name: "Hello Multi-Agent"
 
 steps:
-  - agent: gemini
+  - agent: google
     prompt: "List 3 interesting facts about the MCP protocol."
     save_as: research
 
-  - agent: claude
+  - agent: anthropic
     prompt: "Based on: {{research}}\nDesign a simple architecture."
     save_as: architecture
 ```
@@ -193,19 +193,19 @@ vars:
   topic: "AI safety"
 
 steps:
-  - agent: gemini
+  - agent: google
     prompt: "Research {{topic}}"
     save_as: research
     system: "You are a research analyst."
 
-  - agent: claude
+  - agent: anthropic
     prompt: "Design based on: {{research}}"
     save_as: design
 ```
 
 | Campo | Descripción |
 |-------|-------------|
-| `agent` | Tipo de terminal a utilizar (claude, gemini, gpt, opencode, deepseek) |
+| `agent` | Tipo de terminal a utilizar (anthropic, google, openai, opencode, deepseek) |
 | `prompt` | El prompt a enviar |
 | `save_as` | Clave para almacenar el resultado en la memoria compartida |
 | `system` | Prompt del sistema (opcional) |
@@ -242,7 +242,7 @@ relayos memory-list
 
 ## ⚙️ Configuración
 
-Ubicación del archivo de configuración: `~/.relayos/config.yaml` (o `$AGENTBRIDGE_CONFIG_DIR/config.yaml`)
+Ubicación del archivo de configuración: `~/.relayos/config.yaml` (o `$RELAYOS_CONFIG_DIR/config.yaml`)
 
 ```yaml
 providers:

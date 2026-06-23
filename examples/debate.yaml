@@ -8,7 +8,7 @@ vars:
   topic: "Local LLMs vs Cloud LLMs for enterprise deployment"
 
 steps:
-  - agent: claude
+  - agent: anthropic
     system: >
       You are arguing FOR local LLMs in an enterprise context.
       Make the strongest possible case. Be specific about costs,
@@ -18,7 +18,7 @@ steps:
       vLLM, etc.) instead of using cloud APIs. Topic: {{topic}}
     save_as: position_a
 
-  - agent: gpt
+  - agent: openai
     system: >
       You are arguing FOR cloud LLM APIs in an enterprise context.
       Make the strongest possible case. Be specific about capability,
@@ -28,7 +28,7 @@ steps:
       Anthropic, Google) instead of local deployment. Topic: {{topic}}
     save_as: position_b
 
-  - agent: gemini
+  - agent: google
     system: "You are an impartial judge. Analyze both arguments fairly."
     prompt: >
       Based on these two positions:

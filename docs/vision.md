@@ -1,4 +1,4 @@
-# AgentMesh — The Operating System for AI Agents
+# RelayOS — The Operating System for AI Agents
 
 ## Problem
 
@@ -10,16 +10,16 @@ The AI ecosystem has a proliferation of clients (Claude Code, Cursor, ChatGPT, G
 
 ## Solution
 
-AgentMesh is the coordination layer for AI agents.
+RelayOS is the coordination layer for AI agents.
 
-It sits **between** your AI tools and the models they call. Like Docker orchestrates containers, AgentMesh orchestrates agents — routing tasks to the right model, maintaining shared memory, managing costs, and connecting MCP tools — all while letting you keep using the tools you already love.
+It sits **between** your AI tools and the models they call. Like Docker orchestrates containers, RelayOS orchestrates agents — routing tasks to the right model, maintaining shared memory, managing costs, and connecting MCP tools — all while letting you keep using the tools you already love.
 
 ## Principles
 
-1. **Infrastructure, not a client.** Users keep their existing tools (Claude Code, Cursor, ChatGPT). AgentMesh works underneath.
+1. **Infrastructure, not a client.** Users keep their existing tools (Claude Code, Cursor, ChatGPT). RelayOS works underneath.
 2. **Router, not an aggregator.** Not "one UI to rule them all" — but "intelligent routing to the right agent."
 3. **Cost-aware by default.** Free tiers first, paid only when needed.
-4. **MCP-native.** MCP is the universal protocol. AgentMesh is both consumer and provider.
+4. **MCP-native.** MCP is the universal protocol. RelayOS is both consumer and provider.
 5. **Open source MIT.** No vendor lock-in, no hidden pricing.
 
 ## Target
@@ -32,5 +32,5 @@ Tertiary: MCP server builders seeking distribution
 
 ## Core Metaphor
 
-> AgentMesh is to AI agents what Docker is to containers:
+> RelayOS is to AI agents what Docker is to containers:
 > a runtime, a routing layer, and an ecosystem — not the app itself.

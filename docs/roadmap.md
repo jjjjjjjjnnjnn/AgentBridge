@@ -1,4 +1,4 @@
-# AgentMesh Roadmap
+# RelayOS Roadmap
 
 ## v0.1.0 — "Alpha" (Week 1)
 
@@ -8,7 +8,7 @@
 - [ ] YAML Workflow Engine: sequential multi-step pipelines
 - [ ] Shared Memory: SQLite-based context passing between agents
 - [ ] MCP Client: consume external MCP servers for tools
-- [ ] CLI: `agentmesh run workflow.yaml`
+- [ ] CLI: `relayos run workflow.yaml`
 
 **Size**: ~1000-1500 lines
 **Position**: "Stop copy-pasting between AI tools."

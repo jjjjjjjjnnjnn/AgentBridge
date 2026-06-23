@@ -31,9 +31,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jjjjjjjjnnjnn/AgentBridge"
-Repository = "https://github.com/jjjjjjjjnnjnn/AgentBridge"
-BugTracker = "https://github.com/jjjjjjjjnnjnn/AgentBridge/issues"
+Homepage = "https://github.com/jjjjjjjjnnjnn/relayos"
+Repository = "https://github.com/jjjjjjjjnnjnn/relayos"
+BugTracker = "https://github.com/jjjjjjjjnnjnn/relayos/issues"
 
 [project.scripts]
 relayos = "relayos.cli.main:cli"
@@ -47,4 +47,4 @@ deepseek = "relayos.adapters.deepseek:DeepSeekAdapter"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agentbridge*"]
+include = ["relayos*"]

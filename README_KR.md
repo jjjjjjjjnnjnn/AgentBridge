@@ -139,11 +139,11 @@ export DEEPSEEK_API_KEY="sk-..."
 name: "Hello Multi-Agent"
 
 steps:
-  - agent: gemini
+  - agent: google
     prompt: "List 3 interesting facts about the MCP protocol."
     save_as: research
 
-  - agent: claude
+  - agent: anthropic
     prompt: "Based on: {{research}}\nDesign a simple architecture."
     save_as: architecture
 ```
@@ -192,19 +192,19 @@ vars:
   topic: "AI safety"
 
 steps:
-  - agent: gemini
+  - agent: google
     prompt: "Research {{topic}}"
     save_as: research
     system: "You are a research analyst."
 
-  - agent: claude
+  - agent: anthropic
     prompt: "Design based on: {{research}}"
     save_as: design
 ```
 
 | 필드 | 설명 |
 |-------|-------------|
-| `agent` | 사용할 터미널 유형 (claude, gemini, gpt, opencode, deepseek) |
+| `agent` | 사용할 터미널 유형 (anthropic, google, openai, opencode, deepseek) |
 | `prompt` | 보낼 프롬프트 |
 | `save_as` | 공유 메모리에 결과를 저장할 키 이름 |
 | `system` | 시스템 프롬프트 (선택 사항) |
@@ -241,7 +241,7 @@ relayos memory-list
 
 ## ⚙️ 설정
 
-설정 파일 위치: `~/.relayos/config.yaml` (또는 `$AGENTBRIDGE_CONFIG_DIR/config.yaml`)
+설정 파일 위치: `~/.relayos/config.yaml` (또는 `$RELAYOS_CONFIG_DIR/config.yaml`)
 
 ```yaml
 providers:

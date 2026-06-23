@@ -10,7 +10,7 @@ vars:
   languages: "Chinese, English, German"
 
 steps:
-  - agent: gemini
+  - agent: google
     system: "You are a cross-linguistic research analyst."
     prompt: >
       Analyze how the concept of "{{topic}}" is expressed across
@@ -24,7 +24,7 @@ steps:
       Be precise and cite specific examples where possible.
     save_as: linguistic_analysis
 
-  - agent: claude
+  - agent: anthropic
     system: "You are a cognitive science researcher."
     prompt: >
       Based on this linguistic analysis:
@@ -40,7 +40,7 @@ steps:
       4. How this could be visualized
     save_as: cognitive_model
 
-  - agent: gpt
+  - agent: openai
     system: "You are a scientific paper writer."
     prompt: >
       Based on the linguistic analysis and cognitive model:
