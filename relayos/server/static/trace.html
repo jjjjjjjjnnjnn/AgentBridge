@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RelayOS Trace</title>
+<link rel="stylesheet" href="trace.css">
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1><span>Relay</span>OS<span style="font-weight:400;font-size:14px;color:var(--text-dim)"> · Trace</span></h1>
+    <div class="subtitle">Watch multiple AI agents collaborate in real time</div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="status-bar">
+    <span id="status-text">Ready</span>
+    <span id="status-timer" style="margin-left:12px;font-family:monospace;font-size:12px"></span>
+  </div>
+
+  <!-- Drop Zone / Presets -->
+  <div class="drop-zone" id="drop-zone" onclick="showEditor()">
+    <div class="icon">⚡</div>
+    <p><strong>Run a multi-agent workflow</strong></p>
+    <p style="font-size:12px;margin-top:4px">Choose a preset or paste your own YAML</p>
+    <div class="btn-group" style="margin-top:16px;justify-content:center" onclick="event.stopPropagation()">
+      <button class="btn btn-primary btn-sm" onclick="loadPreset('saas')">📋 SaaS Builder</button>
+      <button class="btn btn-sm" onclick="loadPreset('debate')">🎯 AI Debate</button>
+      <button class="btn btn-sm" onclick="loadPreset('research')">🔬 Research</button>
+      <button class="btn btn-sm" onclick="loadPreset('parallel')">⚡ Parallel</button>
+    </div>
+  </div>
+
+  <!-- YAML Editor -->
+  <div class="editor-area" id="editor-area">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:13px;color:var(--text-dim)">Workflow YAML</span>
+      <div class="btn-group">
+        <button class="btn btn-sm" onclick="hideEditor()">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="run-btn" onclick="runWorkflow()">▶ Run</button>
+      </div>
+    </div>
+    <textarea id="yaml-editor" spellcheck="false"></textarea>
+  </div>
+
+  <!-- Workflow Graph (agent pipeline) -->
+  <div class="workflow-graph" id="workflow-graph" style="display:none"></div>
+
+  <!-- Agent Status Cards -->
+  <div class="agent-list" id="agent-list"></div>
+
+  <!-- Output Log -->
+  <div class="output-area" id="output-log"></div>
+</div>
+
+<script>
+const AGENT_COLORS = {
+  google: '#4285F4', anthropic: '#d97706', openai: '#10a37f',
+  deepseek: '#4f46e5', ollama: '#8b5cf6',
+};
+const AGENT_ICONS = {
+  google: '🔍', anthropic: '🧠', openai: '⭐',
+  deepseek: '🎯', ollama: '💻',
+};
+
+const PRESETS = {
+  saas: `name: "SaaS Competitor Analysis"
+steps:
+  - agent: google
+    prompt: "Research top 5 AI note-taking competitors, their pricing and gaps"
+    save_as: research
+  - agent: anthropic
+    prompt: "Design architecture based on: {{research}}"
+    save_as: architecture
+  - agent: openai
+    prompt: "Implement core API from: {{architecture}}"
+    save_as: code
+  - agent: deepseek
+    prompt: "Review code for security: {{code}}"
+    save_as: review`,
+
+  debate: `name: "AI Debate: Local vs Cloud"
+steps:
+  - agent: anthropic
+    system: "Argue FOR local LLMs in enterprise"
+    prompt: "Make the strongest case for local LLM deployment"
+    save_as: position_a
+  - agent: openai
+    system: "Argue FOR cloud LLM APIs"
+    prompt: "Make the strongest case for cloud AI"
+    save_as: position_b
+  - agent: google
+    prompt: "Synthesize both positions:\\n\\n{{position_a}}\\n\\n{{position_b}}"
+    save_as: conclusion`,
+
+  research: `name: "Cross-Lingual Research"
+vars:
+  topic: "freedom"
+  languages: "Chinese, English, German"
+steps:
+  - agent: google
+    prompt: "Analyze '{{topic}}' across {{languages}} in educational curricula"
+    save_as: linguistic_analysis
+  - agent: anthropic
+    prompt: "Build cognitive model from:\\n{{linguistic_analysis}}"
+    save_as: cognitive_model
+  - agent: openai
+    prompt: "Write a 300-word research finding:\\n{{linguistic_analysis}}\\n{{cognitive_model}}"
+    save_as: finding`,
+
+  parallel: `name: "Parallel Research Sprint"
+steps:
+  - agent: google
+    prompt: "Research MCP ecosystem 2026"
+    save_as: mcp
+    parallel: true
+  - agent: openai
+    prompt: "Analyze multi-agent OSS landscape"
+    save_as: oss
+    parallel: true
+  - agent: anthropic
+    prompt: "Design multi-CLI coordination"
+    save_as: design
+    parallel: true
+  - agent: openai
+    prompt: "Synthesize:\\nMCP: {{mcp}}\\nOSS: {{oss}}\\nDesign: {{design}}"
+    save_as: synthesis`,
+};
+
+// ── State ──────────────────────────────────────────────────
+let runActive = false;
+let startTime = null;
+let timerInterval = null;
+
+// ── Presets ────────────────────────────────────────────────
+function loadPreset(name) {
+  showEditor();
+  document.getElementById('yaml-editor').value = PRESETS[name] || '';
+}
+
+function showEditor() {
+  document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('editor-area').classList.add('visible');
+}
+
+function hideEditor() {
+  document.getElementById('editor-area').classList.remove('visible');
+  document.getElementById('drop-zone').style.display = 'block';
+}
+
+// ── Run Workflow ──────────────────────────────────────────
+async function runWorkflow() {
+  const yaml = document.getElementById('yaml-editor').value.trim();
+  if (!yaml) return;
+
+  // Reset UI
+  document.getElementById('workflow-graph').style.display = 'none';
+  document.getElementById('agent-list').innerHTML = '';
+  document.getElementById('output-log').innerHTML = '';
+  document.getElementById('output-log').classList.remove('visible');
+  runActive = true;
+  startTime = Date.now();
+  setStatus('running', 'Running workflow...');
+
+  // Parse steps from YAML for initial display
+  const steps = parseSteps(yaml);
+  renderGraph(steps);
+  renderAgents(steps);
+
+  // Start timer
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateTimer, 200);
+
+  // Fetch SSE stream
+  try {
+    const response = await fetch('/api/workflows/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml_content: yaml }),
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.substring(6));
+          handleEvent(evt);
+        } catch(e) {}
+      }
+    }
+  } catch (e) {
+    addLog('error', 'Connection error: ' + e.message);
+    setStatus('error', 'Connection failed');
+  }
+
+  runActive = false;
+  if (timerInterval) clearInterval(timerInterval);
+}
+
+function parseSteps(yaml) {
+  try {
+    const lines = yaml.split('\n');
+    const steps = [];
+    let inSteps = false;
+    let currentStep = null;
+    for (const line of lines) {
+      if (line.trim() === 'steps:') { inSteps = true; continue; }
+      if (!inSteps) continue;
+      if (line.startsWith('  -') || line.startsWith('    -')) {
+        if (currentStep) steps.push(currentStep);
+        currentStep = {};
+        const match = line.match(/agent:\s*(\w+)/);
+        if (match) currentStep.agent = match[1];
+        const pmatch = line.match(/prompt:\s*["']?(.+?)["']?$/);
+        if (pmatch) currentStep.prompt = pmatch[1].substring(0, 40);
+      } else if (currentStep && line.includes('agent:')) {
+        const match = line.match(/agent:\s*(\w+)/);
+        if (match) currentStep.agent = match[1];
+      }
+    }
+    if (currentStep) steps.push(currentStep);
+    return steps;
+  } catch(e) { return []; }
+}
+
+// ── Render ─────────────────────────────────────────────────
+function renderGraph(steps) {
+  const graph = document.getElementById('workflow-graph');
+  graph.style.display = 'flex';
+  graph.innerHTML = steps.map((s, i) =>
+    `<div class="graph-step pending" id="graph-${i}">
+      <div class="icon">${AGENT_ICONS[s.agent] || '🤖'}</div>
+      <div class="label">${s.agent}</div>
+      <div class="status-dot"></div>
+    </div>${i < steps.length - 1 ? '<div class="graph-arrow">→</div>' : ''}`
+  ).join('');
+}
+
+function renderAgents(steps) {
+  const list = document.getElementById('agent-list');
+  list.innerHTML = steps.map((s, i) =>
+    `<div class="agent-card waiting" id="agent-${i}">
+      <div class="avatar" style="background:${AGENT_COLORS[s.agent] || '#333'}20;color:${AGENT_COLORS[s.agent] || '#888'}">${AGENT_ICONS[s.agent] || '🤖'}</div>
+      <div class="info">
+        <div class="name">${s.agent}</div>
+        <div class="model" id="model-${i}"></div>
+        <div class="message" id="msg-${i}">${s.prompt || 'waiting...'}</div>
+      </div>
+      <div class="status-badge status-waiting" id="badge-${i}">waiting</div>
+    </div>`
+  ).join('');
+}
+
+// ── Event Handler ──────────────────────────────────────────
+function handleEvent(evt) {
+  const idx = evt.index;
+  if (idx === undefined) {
+    if (evt.type === 'complete') {
+      setStatus('done', `✅ Complete — ${evt.steps} steps`);
+      addLog('ok', `Workflow completed (${evt.steps} steps)`);
+    }
+    return;
+  }
+
+  const card = document.getElementById('agent-' + idx);
+  const graph = document.getElementById('graph-' + idx);
+  const badge = document.getElementById('badge-' + idx);
+  const msg = document.getElementById('msg-' + idx);
+  const model = document.getElementById('model-' + idx);
+
+  if (!card) return;
+
+  if (evt.type === 'step_start') {
+    card.className = 'agent-card running';
+    if (graph) graph.className = 'graph-step running';
+    if (badge) { badge.className = 'status-badge status-running'; badge.textContent = 'running'; }
+    if (msg) msg.textContent = evt.prompt || 'working...';
+    addLog('info', `${evt.agent}: ${evt.prompt || 'started'}`);
+    setStatus('running', `${evt.agent} running...`);
+
+  } else if (evt.type === 'step_done') {
+    card.className = 'agent-card done';
+    if (graph) graph.className = 'graph-step done';
+    if (badge) { badge.className = 'status-badge status-done'; badge.textContent = '✅ done'; }
+    if (model) model.textContent = `${evt.model} · ${(evt.duration_ms/1000).toFixed(1)}s · ${evt.chars}c`;
+    if (msg) msg.textContent = `Completed in ${(evt.duration_ms/1000).toFixed(1)}s`;
+    addLog('ok', `✅ ${evt.agent} (${evt.model}) — ${(evt.duration_ms/1000).toFixed(1)}s, ${evt.chars} chars`);
+
+  } else if (evt.type === 'step_error') {
+    card.className = 'agent-card error';
+    if (graph) graph.className = 'graph-step error';
+    if (badge) { badge.className = 'status-badge status-error'; badge.textContent = '❌ error'; }
+    if (msg) msg.textContent = evt.error || 'failed';
+    addLog('error', `❌ ${evt.agent}: ${evt.error}`);
+  }
+}
+
+// ── Status Bar ─────────────────────────────────────────────
+function setStatus(state, text) {
+  const bar = document.getElementById('status-bar');
+  bar.className = 'status-bar visible ' + state;
+  document.getElementById('status-text').textContent = text;
+}
+
+function updateTimer() {
+  if (!startTime) return;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  document.getElementById('status-timer').textContent = `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ── Output Log ─────────────────────────────────────────────
+function addLog(type, text) {
+  const log = document.getElementById('output-log');
+  log.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = 'line ' + type;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+</script>
+</body>
+</html>

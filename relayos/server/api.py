@@ -214,6 +214,10 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
         async def index():
             return FileResponse(static_dir / "index.html")
 
+        @app.get("/trace")
+        async def trace():
+            return FileResponse(static_dir / "trace.html")
+
         @app.get("/{path:path}")
         async def static_files(path: str):
             fp = static_dir / path
