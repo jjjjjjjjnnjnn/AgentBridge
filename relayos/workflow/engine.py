@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+import time
+from typing import Any, Callable, Optional
 
 from relayos.adapters import get_adapter
 from relayos.config import RelayOSConfig
@@ -12,6 +13,11 @@ from relayos.workflow.models import Workflow, WorkflowStep
 
 logger = logging.getLogger(__name__)
 
+# Progress callback types
+StepStartCB = Callable[[int, str, str], None]  # (step_idx, agent, prompt)
+StepDoneCB = Callable[[int, str, int, int], None]  # (step_idx, model, duration_ms, char_count)
+StepErrorCB = Callable[[int, str], None]  # (step_idx, error)
+
 
 class WorkflowEngine:
     """Executes multi-step YAML workflows across different agents."""
@@ -19,6 +25,9 @@ class WorkflowEngine:
     def __init__(self, config: RelayOSConfig, memory: MemoryStore | None = None):
         self.config = config
         self.memory = memory or MemoryStore(config.memory.get("path", "~/.relayos/memory.db"))
+        self.on_step_start: Optional[StepStartCB] = None
+        self.on_step_done: Optional[StepDoneCB] = None
+        self.on_step_error: Optional[StepErrorCB] = None
 
     def run(self, workflow: Workflow) -> list[dict[str, Any]]:
         results = []
@@ -26,6 +35,8 @@ class WorkflowEngine:
 
         for i, step in enumerate(workflow.steps):
             logger.info(f"Step {i+1}/{len(workflow.steps)}: {step.agent}...")
+            if self.on_step_start:
+                self.on_step_start(i, step.agent, step.prompt)
 
             # Resolve template variables
             filled_prompt = self._resolve_template(step.prompt, context)
@@ -59,7 +70,15 @@ class WorkflowEngine:
             if step.temperature:
                 kwargs["temperature"] = step.temperature
 
-            response = adapter.chat_with_context(messages, **kwargs)
+            step_start = time.time()
+            try:
+                response = adapter.chat_with_context(messages, **kwargs)
+            except Exception as e:
+                if self.on_step_error:
+                    self.on_step_error(i, str(e))
+                raise
+
+            duration = int((time.time() - step_start) * 1000)
 
             step_result = {
                 "step": i + 1,
@@ -68,6 +87,7 @@ class WorkflowEngine:
                 "prompt": filled_prompt,
                 "content": response.content,
                 "usage": response.usage,
+                "duration_ms": duration,
             }
             results.append(step_result)
 
@@ -80,7 +100,10 @@ class WorkflowEngine:
             if step.save_as:
                 context[step.save_as] = response.content
 
-            logger.info(f"  ✓ {response.model} ({response.usage.get('output_tokens', 0)} tokens)")
+            if self.on_step_done:
+                self.on_step_done(i, response.model, duration, len(response.content))
+
+            logger.info(f"  [OK] {response.model} ({response.usage.get('output_tokens', 0)} tokens)")
 
         return results
 

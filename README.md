@@ -329,7 +329,7 @@ routing:
 
 | Example | Description |
 |---------|-------------|
-| `examples/saas-builder.yaml` | 4-agent SaaS design pipeline: Gemini research → Claude design → GPT code → DeepSeek review |
+| `examples/saas-builder.yaml` | 4-agent SaaS design pipeline: Google research → Anthropic design → OpenAI code → DeepSeek review |
 | `examples/linguagraph-research.yaml` | 3-agent research pipeline: linguistic analysis → cognitive model → paper writing |
 | `examples/debate.yaml` | 3-agent debate: pro-local vs pro-cloud LLM, judged by Gemini |
 | `examples/parallel-research.yaml` | 4-agent parallel research sprint with synthesis |
@@ -338,8 +338,8 @@ routing:
 
 ## 🛣️ Roadmap
 
-- **v0.1** — ✅ CLI, YAML workflows, 5 adapters, shared memory, MCP client, terminal pool
-- **v0.2** — 🔄 Web Dashboard (Next.js), Workflow visualization, Cost-aware routing, Docker
+- **v0.1** — ✅ CLI, YAML workflows, 5 adapters, shared memory, MCP client, terminal pool, workflow visualization
+- **v0.2** — 🔄 Docker Compose, Cost-aware routing, Web Dashboard
 - **v0.5** — 🔄 LangGraph orchestration, Conditional branching, Human-in-the-loop
 - **v1.0** — 🔄 Bidirectional MCP Hub, Plugin system, Vector memory
 

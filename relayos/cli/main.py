@@ -65,19 +65,33 @@ def run(workflow_file: str, config: str | None, verbose: bool, list_adapters: bo
         click.echo("|   " + str(i+1) + ". " + step.agent + ": " + step.prompt[:60] + "...")
     click.echo("+")
 
-    # Initialize engine
+    # Initialize display and engine
+    from relayos.cli.display import WorkflowDisplay
     memory = MemoryStore(cfg.memory.get("path", "~/.relayos/memory.db"))
     engine = WorkflowEngine(cfg, memory)
 
-    # Run
+    display = WorkflowDisplay(wf.name)
+    for s in wf.steps:
+        display.add_step(s.agent, s.prompt)
+
+    # Wire callbacks
+    engine.on_step_start = lambda idx, agent, prompt: display.set_running(idx)
+    engine.on_step_done = lambda idx, model, dur, chars: display.set_done(idx, model, dur, chars)
+    engine.on_step_error = lambda idx, err: display.set_error(idx, err)
+
+    # Start display and run
+    display.start()
     try:
         results = engine.run(wf)
     except Exception as e:
-        click.echo(f"\n[ERR] Error: {e}", err=True)
+        display.stop()
+        click.echo(f"\n[ERR] {e}", err=True)
         if verbose:
             import traceback
             traceback.print_exc()
         sys.exit(1)
+    finally:
+        display.stop()
 
     # Output results
     click.echo(f"\n{'='*50}")
