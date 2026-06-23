@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RelayOS Workers</title>
+<link rel="stylesheet" href="workers.css">
+</head>
+<body>
+<div class="top-bar">
+  <div class="title"><span>Relay</span>OS · Worker Fleet</div>
+  <div class="stats" id="top-stats">
+    <span class="stat">Workers: <strong id="s-total">0</strong></span>
+    <span class="stat">Idle: <strong id="s-idle" style="color:var(--green)">0</strong></span>
+    <span class="stat">Busy: <strong id="s-busy" style="color:var(--accent)">0</strong></span>
+    <span class="stat">Tasks: <strong id="s-tasks">0</strong></span>
+  </div>
+</div>
+
+<div class="actions">
+  <button class="btn btn-primary btn-sm" onclick="addWorker()">+ New Worker</button>
+  <button class="btn btn-sm" onclick="refresh()">⟳ Refresh</button>
+</div>
+
+<div class="worker-table" id="worker-table">
+  <div class="worker-header">
+    <span class="col-name">Worker</span>
+    <span class="col-status">Status</span>
+    <span class="col-model">Model</span>
+    <span class="col-tasks">Tasks</span>
+    <span class="col-unread">Inbox</span>
+    <span class="col-memory">Memory</span>
+    <span class="col-last">Last Active</span>
+  </div>
+  <div id="worker-rows"></div>
+</div>
+
+<div class="log-area" id="log-area"></div>
+
+<div class="bottom-bar">
+  <span>⟳ auto-refresh every 5s</span>
+  <span><kbd>R</kbd> refresh <kbd>1-9</kbd> select worker</span>
+</div>
+
+<script>
+let workers = [];
+let selectedIdx = -1;
+
+async function refresh() {
+  try {
+    const resp = await fetch('/api/workers');
+    workers = await resp.json();
+    render();
+  } catch(e) { addLog('err', 'Failed to fetch workers'); }
+}
+
+function render() {
+  const container = document.getElementById('worker-rows');
+  if (!workers.length) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">No workers. Create one to get started.</div>';
+    document.getElementById('s-total').textContent = '0';
+    return;
+  }
+
+  const idle = workers.filter(w => w.status === 'idle').length;
+  const busy = workers.filter(w => w.status === 'busy').length;
+  const totalTasks = workers.reduce((s, w) => s + (w.task_count || 0), 0);
+
+  document.getElementById('s-total').textContent = workers.length;
+  document.getElementById('s-idle').textContent = idle;
+  document.getElementById('s-busy').textContent = busy;
+  document.getElementById('s-tasks').textContent = totalTasks;
+
+  container.innerHTML = workers.map((w, i) => `
+    <div class="worker-row ${i === selectedIdx ? 'selected' : ''}" data-idx="${i}">
+      <div class="col-name">
+        <span class="emoji">${w.emoji || '🤖'}</span>
+        <div>
+          <div class="name">${w.name}</div>
+          <div class="role">${w.description || w.role}</div>
+        </div>
+      </div>
+      <div class="col-status">
+        <span class="status-pulse status-${w.status}">
+          <span class="status-dot"></span>${w.status}
+        </span>
+      </div>
+      <div class="col-model">${w.provider}/${w.model}</div>
+      <div class="col-tasks">${w.task_count || 0}</div>
+      <div class="col-unread">${w.unread ? `<span class="inbox-badge">${w.unread}</span>` : ''}</div>
+      <div class="col-memory">${w.memory_keys || 0}</div>
+      <div class="col-last">${w.last_used ? new Date(w.last_used).toLocaleTimeString() : 'never'}</div>
+    </div>
+  `).join('');
+}
+
+async function addWorker() {
+  const name = prompt('Worker name:', '');
+  if (!name) return;
+  const role = prompt('Role (architect/researcher/coder/reviewer/assistant):', 'assistant');
+  if (!role) return;
+  try {
+    const resp = await fetch('/api/workers', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, role}),
+    });
+    if (resp.ok) {
+      addLog('ok', `Created worker '${name}' (${role})`);
+      refresh();
+    } else {
+      addLog('err', `Failed: ${await resp.text()}`);
+    }
+  } catch(e) { addLog('err', String(e)); }
+}
+
+function addLog(type, msg) {
+  const log = document.getElementById('log-area');
+  log.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = 'line ' + type;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') refresh();
+  const n = parseInt(e.key);
+  if (n >= 1 && n <= 9 && n <= workers.length) {
+    selectedIdx = n - 1;
+    render();
+    const w = workers[selectedIdx];
+    if (w) addLog('ok', `Selected: ${w.name} (${w.role})`);
+  }
+});
+
+// Auto-refresh
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

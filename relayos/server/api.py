@@ -247,6 +247,34 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
     async def inbox_stats():
         return inbox_mgr.get_stats()
 
+    # ── Workers ───────────────────────────────────────────────────
+
+    from relayos.core.worker import WorkerManager
+    worker_mgr = WorkerManager(config_path)
+
+    @app.get("/api/workers")
+    async def list_workers():
+        return worker_mgr.get_team()
+
+    @app.post("/api/workers")
+    async def create_worker(data: dict):
+        name = data.get("name", "")
+        role = data.get("role", "assistant")
+        from relayos.core.worker import DEFAULT_ROLES
+        role_def = DEFAULT_ROLES.get(role, DEFAULT_ROLES["assistant"])
+        w = worker_mgr.create(
+            name=name, role=role,
+            provider=role_def["provider"],
+            model=role_def["model"],
+            emoji=role_def.get("emoji", "🤖"),
+            description=role_def.get("description", ""),
+        )
+        return {"name": w.name, "role": w.role, "status": w.status}
+
+    @app.get("/api/workers/stats")
+    async def worker_stats():
+        return worker_mgr.stats()
+
     # ── Frontend ────────────────────────────────────────────────
 
     static_dir = Path(__file__).parent / "static"
@@ -258,6 +286,10 @@ def create_app(config_path: Optional[str] = None) -> FastAPI:
         @app.get("/trace")
         async def trace():
             return FileResponse(static_dir / "trace.html")
+
+        @app.get("/workers")
+        async def workers():
+            return FileResponse(static_dir / "workers.html")
 
         @app.get("/{path:path}")
         async def static_files(path: str):
