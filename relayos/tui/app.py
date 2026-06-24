@@ -81,19 +81,37 @@ def _getch_unix() -> str:
 # ═══════════════════════════════════════════════════════════════
 
 def _render_welcome() -> Panel:
-    """Render the welcome/home screen."""
+    """Render the welcome/home screen with auto-detected terminals."""
+    from relayos.terminals.scheduler import get_installed_terminals, TERMINAL_CAPABILITIES
+    installed = get_installed_terminals()
+
     t = Text()
     t.append("\n")
     t.append("  RelayOS\n", style="bold blue")
-    t.append("  Agent Operating System\n", style="dim")
+    t.append("  Agent Operating System — Integrated Terminal Workspace\n", style="dim")
     t.append("\n")
-    t.append("  [N] New Conversation\n", style="bold")
-    t.append("  [R] Recent Conversations\n", style="bold")
-    t.append("  [I] Integrate Conversations\n", style="bold")
-    t.append("  [G] Conversation Graph\n", style="bold")
+
+    # Show detected terminals
+    if installed:
+        t.append("  Detected AI Terminals:\n", style="bold green")
+        for term in installed:
+            caps = TERMINAL_CAPABILITIES.get(term, {})
+            best = sorted(caps.items(), key=lambda x: -x[1])[:3]
+            strengths = ", ".join(f"{k}={v}" for k, v in best if k != "cost")
+            t.append(f"    [{term}] {strengths}\n", style="cyan")
+        t.append("\n")
+    else:
+        t.append("  No AI CLI terminals detected.\n", style="yellow")
+        t.append("  Install: opencode, mimo, or claude\n", style="dim")
+        t.append("  Or add API keys in config\n", style="dim")
+        t.append("\n")
+
+    t.append("  [N] New Conversation    [R] Recent\n", style="bold")
+    t.append("  [I] Integrate           [G] Graph\n", style="bold")
+    t.append("  [?] Help                [Q] Quit\n", style="dim")
     t.append("\n")
-    t.append("  [?] Help\n", style="dim")
-    t.append("  [Q] Quit\n", style="dim")
+    t.append("  Workers: [A]rchitect [C]oder [R]esearch [V]iew\n", style="dim")
+    t.append("  Profile: [F]ree [B]alanced [U]uality\n", style="dim")
     return Panel(t, title="[bold]Welcome[/bold]", border_style="blue")
 
 
@@ -267,14 +285,6 @@ def _render_footer(profile: str, team: list[dict]) -> Panel:
 
 def run_tui():
     """Run the TUI workspace."""
-    # Check config exists first
-    from relayos.config import get_config_dir
-    if not (get_config_dir() / "config.yaml").exists():
-        print("RelayOS config not found.")
-        print("Run: relayos config init")
-        print("Or:  relayos init")
-        return
-
     wm = WorkerManager()
     ss = SessionStore()
     _getch = _getch_win if sys.platform == "win32" else _getch_unix
