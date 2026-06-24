@@ -3,12 +3,27 @@ from __future__ import annotations
 
 from relayos.terminals.base import BaseTerminal
 from relayos.terminals.adapters import (
+    AiderTerminal,
+    ChatgptCliTerminal,
     ClaudeCodeTerminal,
     CodexTerminal,
+    ContinueTerminal,
+    CopilotExtTerminal,
+    CursorTerminal,
     CustomTerminal,
+    FabricTerminal,
+    GeminiCliTerminal,
+    GitHubCopilotTerminal,
+    HuggingFaceTerminal,
+    KimiTerminal,
+    LlmCliTerminal,
     MimoCodeTerminal,
+    OpenClawTerminal,
     OpenCodeTerminal,
+    OpenInterpreterTerminal,
+    PiTerminal,
     QCodeTerminal,
+    SgptTerminal,
 )
 
 REGISTRY: dict[str, type[BaseTerminal]] = {
@@ -17,6 +32,21 @@ REGISTRY: dict[str, type[BaseTerminal]] = {
     "opencode": OpenCodeTerminal,
     "codex": CodexTerminal,
     "qcode": QCodeTerminal,
+    "pi": PiTerminal,
+    "cursor": CursorTerminal,
+    "openclaw": OpenClawTerminal,
+    "continue": ContinueTerminal,
+    "copilot": GitHubCopilotTerminal,
+    "huggingface": HuggingFaceTerminal,
+    "gemini": GeminiCliTerminal,
+    "aider": AiderTerminal,
+    "interpreter": OpenInterpreterTerminal,
+    "fabric": FabricTerminal,
+    "sgpt": SgptTerminal,
+    "chatgpt": ChatgptCliTerminal,
+    "llm": LlmCliTerminal,
+    "kimi": KimiTerminal,
+    "copilot-ext": CopilotExtTerminal,
     "custom": CustomTerminal,
 }
 

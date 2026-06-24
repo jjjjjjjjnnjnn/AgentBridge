@@ -192,20 +192,34 @@ def get_plugin_manager() -> PluginManager:
 
 def discover_custom_terminals() -> list[dict]:
     """Scan PATH for unknown AI CLI tools and suggest adding them."""
-    known_binaries = {"claude", "mimo", "opencode", "codex", "q"}
+    known_binaries = {"claude", "mimo", "opencode", "codex", "q", "pi", "cursor",
+                      "openclaw", "continue", "gh", "huggingface-cli", "gemini",
+                      "aider", "interpreter", "fabric", "sgpt", "chatgpt", "llm",
+                      "kimi", "copilot"}
+
     suggestions = []
 
-    # Common AI CLI tools that might be installed
+    # Comprehensive list of AI CLI tools with their metadata
     common_clis = {
-        "cursor": ("Cursor", "cursor", "--prompt"),
-        "windsurf": ("Windsurf", "windsurf", ""),
-        "tabby": ("Tabby", "tabby", "prompt"),
+        "aider": ("Aider", "aider", "--message"),
+        "chatgpt": ("ChatGPT CLI", "chatgpt", ""),
+        "continue": ("Continue", "continue", "--prompt"),
         "copilot": ("GitHub Copilot", "gh", "copilot"),
-        "continue": ("Continue", "continue", "prompt"),
+        "cursor": ("Cursor", "cursor", "--prompt"),
+        "fabric": ("Fabric", "fabric", "--prompt"),
+        "gemini": ("Gemini CLI", "gemini", "chat"),
+        "huggingface": ("HuggingFace CLI", "huggingface-cli", "chat"),
+        "interpreter": ("Open Interpreter", "interpreter", ""),
+        "kimi": ("Kimi (Moonshot)", "kimi", ""),
+        "llm": ("LLM CLI", "llm", ""),
+        "openclaw": ("OpenClaw", "openclaw", "run"),
+        "pi": ("Pi Coding Agent", "pi", ""),
+        "sgpt": ("ShellGPT", "sgpt", ""),
+        "tabby": ("Tabby", "tabby", "prompt"),
+        "windsurf": ("Windsurf", "windsurf", ""),
+        "copilot-ext": ("Copilot Extension", "copilot", ""),
         "llama": ("LLaMA CLI", "llama", "prompt"),
         "qwen": ("Qwen CLI", "qwen", "chat"),
-        "hf": ("HuggingFace CLI", "huggingface-cli", ""),
-        "pi": ("Pi Coding Agent", "pi", ""),
     }
 
     for name, (label, binary, flag) in common_clis.items():
