@@ -35,7 +35,14 @@ def _getch() -> str:
             if not msvcrt.kbhit(): return ""
             cp = ctypes.windll.kernel32.GetConsoleCP()
             raw = msvcrt.getch()
-            if raw in (b'\xe0', b'\x00'): msvcrt.getch(); return ""
+            if raw in (b'\xe0', b'\x00'):
+                # Arrow keys: \xe0 H=Up P=Down K=Left M=Right
+                key = msvcrt.getch()
+                if key == b'H': return "^A"  # Up
+                if key == b'P': return "^B"  # Down
+                if key == b'K': return "^D"  # Left
+                if key == b'M': return "^C"  # Right
+                return ""
             return raw.decode(f'cp{cp}')
         except Exception: return ""
     else:
