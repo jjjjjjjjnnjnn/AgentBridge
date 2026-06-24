@@ -1,26 +1,19 @@
 <p align="center">
-  <picture>
-    <img src="https://img.shields.io/badge/RelayOS-v0.2.0a12-8B5CF6?style=for-the-badge" alt="RelayOS">
-  </picture>
-</p>
-
-<h1 align="center">RelayOS</h1>
-
-<p align="center">
   <strong>Git for AI Conversations.</strong><br>
-  <br>
-  Fork, merge, and weave AI conversations together.<br>
-  One workspace for Claude, GPT, Gemini, DeepSeek, and local models.
+  Fork, merge, and weave AI conversations together.
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-10B981?style=for-the-badge" alt="Quick Start"></a>
-  <a href="#%EF%B8%8F-features"><img src="https://img.shields.io/badge/Features-3B82F6?style=for-the-badge" alt="Features"></a>
+  <img src="docs/demo.gif" alt="RelayOS Demo" width="800">
+</p>
+
+<p align="center">
+  <code>pip install relayos && relay</code>
+</p>
+
+<p align="center">
   <a href="https://github.com/jjjjjjjjnnjnn/relayos"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github" alt="GitHub"></a>
-  <a href="#-installation"><img src="https://img.shields.io/badge/pip_install_relayos-FF6F00?style=for-the-badge&logo=pypi" alt="Install"></a>
-</p>
-
-<p align="center">
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-10B981?style=for-the-badge" alt="Quick Start"></a>
   <a href="README_ZH.md"><img src="https://img.shields.io/badge/中文-EA4335?style=flat-square" alt="中文"></a>
   <a href="README_DE.md"><img src="https://img.shields.io/badge/Deutsch-FFD700?style=flat-square" alt="Deutsch"></a>
   <a href="README_ES.md"><img src="https://img.shields.io/badge/Español-00C853?style=flat-square" alt="Español"></a>

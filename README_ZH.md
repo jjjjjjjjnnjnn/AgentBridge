@@ -1,21 +1,14 @@
 <p align="center">
-  <picture>
-    <img src="https://img.shields.io/badge/RelayOS-v0.2.0a12-8B5CF6?style=for-the-badge" alt="RelayOS">
-  </picture>
-</p>
-
-<h1 align="center">RelayOS</h1>
-
-<p align="center">
   <strong>AI 对话的 Git。</strong><br>
-  <br>
-  Fork、merge、串联你的 AI 对话。<br>
-  一个工作空间整合 Claude、GPT、Gemini、DeepSeek 和本地模型。
+  Fork、merge、串联你的 AI 对话。
 </p>
 
 <p align="center">
-  <a href="#-快速开始"><img src="https://img.shields.io/badge/快速开始-10B981?style=for-the-badge" alt="快速开始"></a>
-  <a href="#-安装"><img src="https://img.shields.io/badge/pip_install_relayos-FF6F00?style=for-the-badge&logo=pypi" alt="安装"></a>
+  <img src="docs/demo.gif" alt="RelayOS 演示" width="800">
+</p>
+
+<p align="center">
+  <code>pip install relayos && relay</code>
 </p>
 
 <p align="center">
