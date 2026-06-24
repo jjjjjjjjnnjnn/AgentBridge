@@ -119,7 +119,17 @@ class SessionStore:
                     tokens INTEGER DEFAULT 0,
                     created_at INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS conversation_graph (
+                    child_id TEXT NOT NULL,
+                    parent_id TEXT NOT NULL,
+                    PRIMARY KEY (child_id, parent_id),
+                    FOREIGN KEY (child_id) REFERENCES sessions(id),
+                    FOREIGN KEY (parent_id) REFERENCES sessions(id)
+                );
                 CREATE INDEX IF NOT EXISTS idx_msg_session ON messages(session_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_graph_parent ON conversation_graph(parent_id);
+                CREATE INDEX IF NOT EXISTS idx_graph_child ON conversation_graph(child_id);
+                CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
             """)
             conn.commit()
 
@@ -234,5 +244,58 @@ class SessionStore:
     def delete_session(self, sid: str):
         with sqlite3.connect(self._db_path) as conn:
             conn.execute("DELETE FROM messages WHERE session_id=?", (sid,))
+            conn.execute("DELETE FROM conversation_graph WHERE child_id=? OR parent_id=?", (sid, sid))
             conn.execute("DELETE FROM sessions WHERE id=?", (sid,))
             conn.commit()
+
+    # ── Conversation Graph ──────────────────────────────────
+
+    def add_integrated_conversation(self, child_id: str, parent_ids: list[str]):
+        """Record that a conversation was created by merging parent conversations."""
+        with sqlite3.connect(self._db_path) as conn:
+            for pid in parent_ids:
+                conn.execute("INSERT OR IGNORE INTO conversation_graph (child_id, parent_id) VALUES (?, ?)",
+                             (child_id, pid))
+            conn.commit()
+
+    def get_conversation_parents(self, sid: str) -> list[str]:
+        """Get the IDs of conversations that were merged into this one."""
+        rows = self._conn.execute(
+            "SELECT parent_id FROM conversation_graph WHERE child_id=? ORDER BY parent_id",
+            (sid,)
+        ).fetchall()
+        return [r["parent_id"] for r in rows]
+
+    def get_conversation_children(self, sid: str) -> list[str]:
+        """Get the IDs of conversations that were created FROM this one."""
+        rows = self._conn.execute(
+            "SELECT child_id FROM conversation_graph WHERE parent_id=? ORDER BY child_id",
+            (sid,)
+        ).fetchall()
+        return [r["child_id"] for r in rows]
+
+    def get_conversation_graph(self, sid: str) -> dict:
+        """Get the full graph context for a conversation (ancestors + descendants)."""
+        parents = self.get_conversation_parents(sid)
+        children = self.get_conversation_children(sid)
+        # Get grandparents
+        grandparents = []
+        for p in parents:
+            grandparents.extend(self.get_conversation_parents(p))
+        return {
+            "ancestors": parents + grandparents,
+            "descendants": children,
+            "all": list(set(parents + grandparents + children)),
+        }
+
+    def list_project_conversations(self, project_id: str, limit: int = 20) -> list[dict]:
+        """List all conversations in a project."""
+        if not project_id:
+            return self.list_sessions(limit)
+        rows = self._conn.execute(
+            "SELECT id, name, mode, profile, project_id, last_worker, last_model, last_capability, last_strategy, created_at, updated_at, "
+            "(SELECT COUNT(*) FROM messages WHERE session_id=sessions.id) as msg_count "
+            "FROM sessions WHERE project_id=? ORDER BY updated_at DESC LIMIT ?",
+            (project_id, limit)
+        ).fetchall()
+        return [dict(r) for r in rows]
