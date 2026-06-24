@@ -108,10 +108,20 @@ class CostManager:
     def get_summary(self) -> str:
         """Get a human-readable usage summary."""
         r = self.get_report()
-        lines = [f"Total API calls: {r['total_calls']}", f"Total cost: ${r['total_cost']:.4f}"]
+        from relayos.core.budget import BudgetGuard
+        bg = BudgetGuard(db_path=self._db_path)
+        status = bg.get_status()
+        lines = [
+            f"Cost Report",
+            f"{'='*40}",
+            f"  Today:     ${status['today']:.4f} / ${status['daily_limit']:.2f} ({status['daily_pct']}%)",
+            f"  This month: ${status['monthly']:.4f} / ${status['monthly_limit']:.2f} ({status['monthly_pct']}%)",
+            f"  Total:     ${r['total_cost']:.4f}  ({r['total_calls']} calls)",
+            "",
+        ]
         for pname, pdata in r.get("providers", {}).items():
             lines.append(f"  {pname}: {pdata['calls']} calls, {pdata['input_tokens']} in / {pdata['output_tokens']} out, ${pdata['cost']:.4f}")
-        return "\n".join(lines) if len(r.get("providers", {})) else "No usage recorded yet."
+        return "\n".join(lines) if r.get("providers") else "No usage recorded yet."
 
     def select_provider(self, preferred: str | None = None, policy: str = "balanced",
                         available_providers: Optional[list[str]] = None) -> str:

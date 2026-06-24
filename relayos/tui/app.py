@@ -279,10 +279,23 @@ def run_tui(initial_task: str = ""):
 def main():
     """Entry for `relay` command.
 
-    relay          → TUI workspace
-    relay "task"   → Execute directly
+    - First run → wizard
+    - relay          → TUI workspace
+    - relay "task"   → Execute directly
     """
     import argparse
+
+    # First-run check: trigger wizard
+    from relayos.config import get_config_dir
+    if not (get_config_dir() / "config.yaml").exists():
+        # Check if piped input or command arg
+        if sys.stdin.isatty() or not (sys.stdin.read(0) == "" and True):
+            pass
+        from relayos.cli.wizard import run_wizard
+        if run_wizard():
+            # Config created, continue
+            pass
+
     p = argparse.ArgumentParser(description="RelayOS — Agent Workspace")
     p.add_argument("cmd", nargs="?")
     p.add_argument("args", nargs="*")
