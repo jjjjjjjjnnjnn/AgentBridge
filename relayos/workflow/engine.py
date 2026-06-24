@@ -117,7 +117,8 @@ class WorkflowEngine:
             if self.on_step_done:
                 self.on_step_done(i, response.model, duration, len(response.content))
 
-            logger.info(f"  [OK] {response.model} ({response.usage.get('output_tokens', 0)} tokens)")
+            usage = response.usage or {}
+            logger.info(f"  [OK] {response.model} ({usage.get('output_tokens', 0)} tokens)")
 
         return results
 

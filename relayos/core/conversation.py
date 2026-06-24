@@ -67,7 +67,7 @@ class ConversationEngine:
         # Get worker or create temporary
         worker = self.workers.get(target)
         if not worker:
-            route = self.scheduler.route(message, profile=session.profile)
+            route = self.scheduler.route(message, capability, profile=strategy or session.profile)
             try:
                 adapter = get_adapter(route.provider, {
                     "api_key": self.config.resolve_api_key(route.provider),
@@ -189,8 +189,11 @@ class ConversationEngine:
                     context += f"\n{r['worker']}: {r['content'][:200]}"
                 context += f"\n\nNow you ({worker_name}) respond:"
 
-                adapter = get_adapter(worker_name, {
-                    "api_key": self.config.resolve_api_key(worker_name),
+                # Look up worker's provider, not just the name
+                w = self.workers.get(worker_name)
+                provider = w.provider if w else worker_name
+                adapter = get_adapter(provider, {
+                    "api_key": self.config.resolve_api_key(provider),
                 })
                 response = adapter.chat(context)
 

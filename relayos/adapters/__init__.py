@@ -1,15 +1,39 @@
 """Adapter registry — discover adapters via entry_points or manual register."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from relayos.adapters.base import BaseAdapter
+
+logger = logging.getLogger(__name__)
 
 _REGISTRY: dict[str, type[BaseAdapter]] = {}
 
 
 def register(name: str, cls: type[BaseAdapter]):
     _REGISTRY[name] = cls
+
+
+def _discover_entry_points():
+    """Discover adapters registered via pyproject.toml entry points."""
+    try:
+        from importlib.metadata import entry_points
+        eps = entry_points(group="relayos.adapters")
+        for ep in eps:
+            if ep.name not in _REGISTRY:
+                try:
+                    cls = ep.load()
+                    _REGISTRY[ep.name] = cls
+                    logger.debug(f"Discovered adapter '{ep.name}' via entry point")
+                except Exception as e:
+                    logger.warning(f"Failed to load adapter '{ep.name}': {e}")
+    except Exception:
+        pass  # entry point discovery is best-effort
+
+
+# Discover entry points on import
+_discover_entry_points()
 
 
 def get_adapter(name: str, config: dict[str, Any] | None = None) -> BaseAdapter:

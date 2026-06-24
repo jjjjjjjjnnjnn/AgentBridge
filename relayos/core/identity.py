@@ -51,6 +51,7 @@ class IdentityStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path)
             self._local.conn.row_factory = sqlite3.Row
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
         return self._local.conn
 
     def _init_db(self):

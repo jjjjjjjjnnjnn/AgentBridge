@@ -84,12 +84,8 @@ CAPABILITY_SCORES: dict[str, dict[str, int]] = {
     },
 }
 
-# Terminal CLI → capability scores (for CLI-based workers like opencode, mimo)
-TERMINAL_CAPABILITIES: dict[str, dict[str, int]] = {
-    "opencode": {"coding": 7, "architecture": 5, "review": 6, "research": 5, "reasoning": 5, "quick": 8, "writing": 5},
-    "mimo": {"coding": 6, "architecture": 4, "review": 5, "research": 4, "reasoning": 4, "quick": 9, "writing": 5},
-    "claude": {"coding": 9, "architecture": 9, "review": 8, "research": 7, "reasoning": 9, "quick": 5, "writing": 8},
-}
+# Terminal capability scores are in relayos/terminals/scheduler.py
+# (they operate at the CLI terminal level, not the model level)
 
 # Model cost tiers (estimated USD per 1K tokens output)
 MODEL_COST_TIER: dict[str, str] = {

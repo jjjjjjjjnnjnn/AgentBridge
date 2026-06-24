@@ -130,7 +130,6 @@ class PluginManager:
         plugin_dir = Path.home() / ".relayos" / "plugins"
         plugin_dir.mkdir(parents=True, exist_ok=True)
         dst = plugin_dir / src.name
-        import shutil
         shutil.copy2(src, dst)
 
         plugin_name = src.stem

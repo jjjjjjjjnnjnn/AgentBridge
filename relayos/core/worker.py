@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,9 +27,6 @@ from relayos.adapters import get_adapter
 from relayos.config import load_config
 from relayos.core.compiler import StateCompiler
 from relayos.core.state import StateStore
-
-logger = logging.getLogger(__name__)
-from relayos.orchestrator.pool import TerminalPool
 
 logger = logging.getLogger(__name__)
 
@@ -158,12 +156,13 @@ class WorkerManager:
         with self._lock:
             if name in self._workers:
                 del self._workers[name]
-        # StateStore doesn't have delete_worker yet, use raw SQL
-        import sqlite3
-        db = str(Path("~/.relayos/state.db").expanduser())
-        with sqlite3.connect(db) as conn:
-            conn.execute("DELETE FROM workers WHERE id=?", (name,))
-            conn.commit()
+        # Delete from StateStore
+        try:
+            with sqlite3.connect(self.store._db_path) as conn:
+                conn.execute("DELETE FROM workers WHERE id=?", (name,))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to delete worker '{name}' from store: {e}")
         return True
 
     def run(self, worker_name: str, prompt: str, **kwargs) -> str:
@@ -198,6 +197,7 @@ class WorkerManager:
             return response.content
         except Exception as e:
             w.status = "error"
+            logger.warning(f"Worker '{worker_name}' failed: {e}")
             raise
 
     def send_task(self, from_worker: str, to_worker: str, task_body: str, task_type: str = "request") -> str:

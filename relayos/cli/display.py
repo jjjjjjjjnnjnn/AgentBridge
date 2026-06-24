@@ -6,6 +6,7 @@ for CLI workflow runs. No external dependencies — uses ANSI escape codes.
 from __future__ import annotations
 
 import itertools
+import os
 import shutil
 import sys
 import threading
@@ -14,10 +15,28 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Optional
 
-SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-PASS_CHAR = "✓"
-FAIL_CHAR = "✗"
-WARN_CHAR = "⚠"
+# ASCII fallback for Windows consoles without Unicode support
+_IS_WINDOWS = os.name == "nt"
+if _IS_WINDOWS:
+    try:
+        # Try to detect if console supports Unicode
+        sys.stdout.encoding.lower()
+        _USE_UNICODE = sys.stdout.encoding.lower() in ("utf-8", "utf8", "utf-16le")
+    except AttributeError:
+        _USE_UNICODE = False
+else:
+    _USE_UNICODE = True
+
+if _USE_UNICODE:
+    SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    PASS_CHAR = "✓"
+    FAIL_CHAR = "✗"
+    WARN_CHAR = "⚠"
+else:
+    SPINNER_CHARS = r"|/-\"
+    PASS_CHAR = "+"
+    FAIL_CHAR = "x"
+    WARN_CHAR = "!"
 
 
 def _now() -> str:
@@ -48,7 +67,8 @@ class WorkflowDisplay:
         self.workflow_name = workflow_name
         self.steps: list[StepDisplay] = []
         self._lock = threading.Lock()
-        self._spinner_gen = itertools.cycle(SPINNER_CHARS)
+        self._spinner = SPINNER_CHARS
+        self._spinner_idx = 0
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._start_time = time.time()
@@ -79,6 +99,12 @@ class WorkflowDisplay:
             if step_idx < len(self.steps):
                 self.steps[step_idx].status = "error"
 
+    def _next_spinner(self) -> str:
+        """Thread-safe spinner character advance."""
+        ch = self._spinner[self._spinner_idx % len(self._spinner)]
+        self._spinner_idx += 1
+        return ch
+
     def _render(self) -> str:
         """Build the display frame."""
         elapsed = int(time.time() - self._start_time)
@@ -86,7 +112,10 @@ class WorkflowDisplay:
 
         with self._lock:
             for s in self.steps:
-                spinner = next(self._spinner_gen) if s.status == "running" else " "
+                if s.status == "running":
+                    spinner = self._next_spinner()
+                else:
+                    spinner = " "
                 if s.status == "pending":
                     prefix = "  "
                     color = "\033[90m"  # gray
@@ -122,6 +151,11 @@ class WorkflowDisplay:
 
         return "\n".join(lines)
 
+    def _is_finished(self) -> bool:
+        """Check if all steps have finished (thread-safe)."""
+        with self._lock:
+            return not any(s.status in ("pending", "running") for s in self.steps)
+
     def start(self):
         """Begin the animation thread."""
         self._running = True
@@ -131,24 +165,31 @@ class WorkflowDisplay:
 
     def _animate(self):
         """Continuously redraw while running."""
-        while self._running and any(s.status in ("pending", "running") for s in self.steps):
-            frame = self._render()
-            sys.stderr.write("\033[?25l")  # hide cursor
-            sys.stderr.write("\033[J")  # clear below
-            sys.stderr.write(frame)
-            sys.stderr.write("\033[?25h")  # show cursor
-            sys.stderr.flush()
-            time.sleep(0.08)
+        try:
+            while self._running and not self._is_finished():
+                frame = self._render()
+                sys.stderr.write("\033[?25l")  # hide cursor
+                sys.stderr.write("\033[J")  # clear below
+                sys.stderr.write(frame)
+                sys.stderr.write("\033[?25h")  # show cursor
+                sys.stderr.flush()
+                time.sleep(0.08)
+        except Exception:
+            pass
 
         # Final render
-        final = self._render()
-        sys.stderr.write("\033[?25l")
-        sys.stderr.write("\033[J")
-        sys.stderr.write(final)
-        sys.stderr.write("\033[?25h")
-        sys.stderr.write("\n")
+        try:
+            final = self._render()
+            sys.stderr.write("\033[?25l")
+            sys.stderr.write("\033[J")
+            sys.stderr.write(final)
+            sys.stderr.write("\033[?25h")
+            sys.stderr.write("\n")
+        except Exception:
+            sys.stderr.write("\n")
 
     def stop(self):
-        self._running = False
+        with self._lock:
+            self._running = False
         if self._thread:
             self._thread.join(timeout=1)

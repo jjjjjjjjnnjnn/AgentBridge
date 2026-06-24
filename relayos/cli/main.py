@@ -85,7 +85,7 @@ def run(workflow_file: str, config: str | None, verbose: bool, list_adapters: bo
         results = engine.run(wf)
     except Exception as e:
         display.stop()
-        click.echo(f"\n[ERR] {e}", err=True)
+        click.echo(f"\n[ERR] Workflow '{wf.name}' failed: {e}", err=True)
         if verbose:
             import traceback
             traceback.print_exc()
@@ -116,11 +116,16 @@ def chat(agent_name: str, prompt: tuple[str], model: str | None, config: str | N
     cfg = load_config(Path(config) if config else None)
     provider_cfg = cfg.providers.get(agent_name, {})
 
-    adapter = get_adapter(agent_name, {
-        "api_key": cfg.resolve_api_key(agent_name),
-        "model": model or provider_cfg.get("model", ""),
-        "base_url": provider_cfg.get("base_url"),
-    })
+    try:
+        adapter = get_adapter(agent_name, {
+            "api_key": cfg.resolve_api_key(agent_name),
+            "model": model or provider_cfg.get("model", ""),
+            "base_url": provider_cfg.get("base_url"),
+        })
+    except ValueError as e:
+        click.echo(f"[ERR] {e}", err=True)
+        click.echo(f"  Available: {', '.join(list_adapters())}", err=True)
+        sys.exit(1)
 
     full_prompt = " ".join(prompt)
     click.echo(f"Agent: {adapter.provider} ({adapter.model})")
@@ -176,7 +181,7 @@ def recall(key: str, session: str | None, db: str):
     store = MemoryStore(db)
     val = store.get(key, session)
     if val is None:
-        click.echo(f"Key '{key}' not found in memory")
+        click.echo(f"Key '{key}' not found in memory", err=True)
         sys.exit(1)
     click.echo(val)
 
@@ -594,8 +599,10 @@ def use(terminal_name: str | None, list_flag: bool):
         click.echo("Switch: relay use <opencode|mimo|claude|free|balanced|quality>")
         return
 
-    valid_terminals = ("opencode", "mimo", "claude", "codex", "qcode")
+    from relayos.terminals import list_terminal_types
+
     valid_profiles = ("free", "balanced", "quality")
+    valid_terminals = tuple(t["type"] for t in list_terminal_types())
 
     if terminal_name in valid_profiles:
         # It's a profile name
@@ -804,7 +811,7 @@ def session_use(session_id: str, worker_name: str):
     sess = ss.get_session(session_id)
     if not sess:
         click.echo(f"[ERR] Session '{session_id}' not found", err=True)
-        return
+        sys.exit(1)
     ss.set_last_used(session_id, worker_name)
     click.echo(f"[OK] Session '{session_id}' now uses '{worker_name}'")
 
@@ -994,8 +1001,9 @@ try:
     from relayos.cli.config_commands import config as config_grp, plugin as plugin_grp
     cli.add_command(config_grp)
     cli.add_command(plugin_grp)
-except ImportError:
-    pass  # config_commands not available
+except ImportError as e:
+    # config_commands not available (missing deps) -- warn user
+    pass
 
 
 @cli.command()

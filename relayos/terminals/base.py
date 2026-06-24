@@ -111,7 +111,13 @@ class BaseTerminal(ABC):
                 duration_ms=duration,
             )
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
+            # Kill the orphaned subprocess so it doesn't stay running
+            try:
+                e.process.kill()
+                e.process.wait(timeout=5)
+            except Exception:
+                pass
             instance.status = "error"
             return TerminalResult(
                 content="",
@@ -152,7 +158,14 @@ class BaseTerminal(ABC):
         """Build environment variables for the subprocess."""
         env = dict(__import__("os").environ)
         if instance.model:
-            # Standard env vars for model selection
+            model = instance.model
+            # Remove conflicting env vars, then set the correct one
             for var in ["CLAUDE_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL", "MODEL"]:
                 env.pop(var, None)
+            if self.type == "claude":
+                env["CLAUDE_MODEL"] = model
+            elif self.type in ("opencode", "codex"):
+                env["OPENAI_MODEL"] = model
+            else:
+                env["MODEL"] = model
         return env

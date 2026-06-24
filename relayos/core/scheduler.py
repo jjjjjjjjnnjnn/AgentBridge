@@ -35,7 +35,7 @@ class RouteVerdict:
     cost_tier: str
     estimated_cost: float  # USD
     confidence: float
-    escalation_chain: list[str]  # models tried before this one
+    candidate_chain: list[str]  # models considered (primary + fallbacks)
     reason: str
 
 
@@ -55,14 +55,23 @@ class ModelScheduler:
         prompt_lower = prompt.lower()
 
         type_patterns = {
-            "architecture": ["architecture", "design", "system", "structure", "schema", "blueprint", "plan"],
-            "review": ["review", "audit", "security", "vulnerability", "bug", "quality", "refactor"],
-            "research": ["research", "analyze", "compare", "trend", "landscape", "competitor", "survey"],
-            "reasoning": ["reason", "think", "logic", "solve", "problem", "math", "puzzle"],
-            "quick": ["summarize", "short", "quick", "brief", "tl;dr", "keywords", "summar"],
-            "writing": ["write", "document", "readme", "draft", "essay", "article", "blog", "doc"],
+            "architecture": ["architecture", "design", "system", "structure", "schema", "blueprint", "plan",
+                             "component", "module", "data flow", "tech stack", "scalab"],
+            "review": ["code review", "audit", "vulnerability", "security review", "quality",
+                       "correctness", "bugs", "code quality", "static analysis", "lint",
+                       "review this", "review the"],
+            "research": ["research", "analyze", "compare", "trend", "landscape", "competitor", "survey",
+                         "literature", "study", "investigate", "what is", "explain"],
+            "reasoning": ["reason", "think", "logic", "solve", "problem", "math", "puzzle",
+                          "inference", "deduce", "derive", "proof", "calculate"],
+            "quick": ["summarize", "short", "quick", "brief", "tl;dr", "keywords", "summar",
+                      "explain briefly", "in short", "concise"],
+            "writing": ["write", "document", "readme", "draft", "essay", "article", "blog", "doc",
+                        "tutorial", "guide", "documentation", "composition"],
             "coding": ["implement", "code", "function", "api", "endpoint", "class", "method",
-                       "debug", "fix", "test", "refactor", "jwt", "auth", "database", "sql"],
+                       "debug", "fix", "test", "refactor", "jwt", "auth", "database", "sql",
+                       "program", "script", "algorithm", "library", "framework", "build",
+                       "create", "add feature", "error handling"],
         }
 
         best_type = "coding"
@@ -70,6 +79,9 @@ class ModelScheduler:
 
         for task_type, patterns in type_patterns.items():
             count = sum(1 for p in patterns if p in prompt_lower)
+            # Boost review when "review" appears as the very first word
+            if task_type == "review" and prompt_lower.startswith("review"):
+                count += 1
             if count > best_count:
                 best_count = count
                 best_type = task_type
@@ -139,7 +151,7 @@ class ModelScheduler:
         est_cost = self.estimate_cost(model)
         confidence = min(best["capability_score"] / 10, 1.0)
 
-        # Build escalation chain
+        # Build candidate chain (models considered, in order)
         chain = [model]
         if confidence < CONFIDENCE_THRESHOLD and len(candidates) > 1:
             # Escalate to next best
@@ -153,7 +165,7 @@ class ModelScheduler:
             cost_tier=best["cost_tier"],
             estimated_cost=est_cost,
             confidence=round(confidence, 2),
-            escalation_chain=chain,
+            candidate_chain=chain,
             reason=f"{task_type} → {model} ({best['cost_tier']}, score={best['capability_score']})",
         )
 

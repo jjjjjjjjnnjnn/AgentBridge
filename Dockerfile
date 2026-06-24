@@ -4,10 +4,8 @@ WORKDIR /app
 
 # Install dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .[server]
-
-# Copy source
 COPY relayos/ relayos/
+RUN pip install --no-cache-dir .[server]
 
 # Default port
 EXPOSE 8080

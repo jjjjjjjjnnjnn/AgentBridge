@@ -85,6 +85,7 @@ class SessionStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path)
             self._local.conn.row_factory = sqlite3.Row
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
         return self._local.conn
 
     def _init_db(self):
@@ -122,37 +123,24 @@ class SessionStore:
             """)
             conn.commit()
 
-        # Migration for existing databases
+        # Migration for existing databases: add columns atomically
         try:
             with sqlite3.connect(self._db_path) as conn:
-                conn.execute("ALTER TABLE sessions ADD COLUMN last_worker TEXT DEFAULT ''")
+                existing = [r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()]
+                migrations = [
+                    "ALTER TABLE sessions ADD COLUMN last_worker TEXT DEFAULT ''",
+                    "ALTER TABLE sessions ADD COLUMN last_model TEXT DEFAULT ''",
+                    "ALTER TABLE sessions ADD COLUMN last_capability TEXT DEFAULT ''",
+                    "ALTER TABLE sessions ADD COLUMN last_strategy TEXT DEFAULT ''",
+                    "ALTER TABLE sessions ADD COLUMN project_id TEXT DEFAULT ''",
+                ]
+                for stmt in migrations:
+                    col = stmt.split()[3]
+                    if col not in existing:
+                        conn.execute(stmt)
                 conn.commit()
         except sqlite3.OperationalError:
-            pass
-        try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("ALTER TABLE sessions ADD COLUMN last_model TEXT DEFAULT ''")
-                conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("ALTER TABLE sessions ADD COLUMN last_capability TEXT DEFAULT ''")
-                conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT DEFAULT ''")
-                conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("ALTER TABLE sessions ADD COLUMN last_strategy TEXT DEFAULT ''")
-                conn.commit()
-        except sqlite3.OperationalError:
-            pass
+            pass  # migration not needed on fresh db
 
     # ── Sessions ──────────────────────────────────────────
 
@@ -166,8 +154,8 @@ class SessionStore:
         parts = json.dumps(participants or [])
         with sqlite3.connect(self._db_path) as conn:
             conn.execute(
-                "INSERT INTO sessions (id, name, mode, participants, project_id, profile, last_worker, last_model, last_capability, last_strategy, max_parallel, max_models, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, 3, 4, ?, ?)",
-                (sid, name, mode, parts, project_id, profile, last_capability, last_strategy, now, now),
+                "INSERT INTO sessions (id, name, mode, participants, project_id, profile, last_worker, last_model, last_capability, last_strategy, max_parallel, max_models, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sid, name, mode, parts, project_id, profile, '', '', last_capability, last_strategy, 3, 4, now, now),
             )
             conn.commit()
         return Session(id=sid, name=name, mode=mode, participants=participants or [],

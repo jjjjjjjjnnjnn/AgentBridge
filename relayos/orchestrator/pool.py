@@ -182,7 +182,7 @@ class TerminalPool:
 
         with self._lock:
             inst.status = "idle" if result.exit_code == 0 else "error"
-            inst.last_used = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            inst.last_used = datetime.now(timezone.utc).isoformat()
             inst.task_count += 1
             if result.content:
                 inst.total_tokens += len(result.content) // 4

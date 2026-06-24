@@ -174,9 +174,11 @@ class StateStore:
         return [dict(r) for r in rows]
 
     def search_decisions(self, query: str, limit: int = 10) -> list[dict]:
+        # Escape LIKE special chars to prevent unintended pattern matching
+        escaped = query.replace("%", r"\%").replace("_", r"\_")
         rows = self._conn.execute(
             "SELECT * FROM decisions WHERE summary LIKE ? OR reason LIKE ? ORDER BY created_at DESC LIMIT ?",
-            (f"%{query}%", f"%{query}%", limit),
+            (f"%{escaped}%", f"%{escaped}%", limit),
         ).fetchall()
         return [dict(r) for r in rows]
 

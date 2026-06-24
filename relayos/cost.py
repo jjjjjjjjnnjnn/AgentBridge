@@ -52,6 +52,7 @@ class CostManager:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path)
             self._local.conn.row_factory = sqlite3.Row
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
         return self._local.conn
 
     def _init_db(self):
@@ -112,14 +113,32 @@ class CostManager:
             lines.append(f"  {pname}: {pdata['calls']} calls, {pdata['input_tokens']} in / {pdata['output_tokens']} out, ${pdata['cost']:.4f}")
         return "\n".join(lines) if len(r.get("providers", {})) else "No usage recorded yet."
 
-    def select_provider(self, preferred: str | None = None, policy: str = "balanced") -> str:
-        """Select the best provider based on policy."""
+    def select_provider(self, preferred: str | None = None, policy: str = "balanced",
+                        available_providers: Optional[list[str]] = None) -> str:
+        """Select the best provider based on policy and availability.
+
+        Args:
+            preferred: If set, returns this provider (no checking)
+            policy: Routing policy string
+            available_providers: List of configured/available providers.
+                If None, returns the policy default without checking.
+        """
         if preferred:
             return preferred
-        if policy == "free_first":
-            return FREE_FIRST_ORDER[0]
-        elif policy == "quality":
-            return QUALITY_FIRST_ORDER[0]
-        elif policy == "cheapest":
-            return CHEAPEST_ORDER[0]
-        return "openai"
+
+        order = {
+            "free_first": FREE_FIRST_ORDER,
+            "quality": QUALITY_FIRST_ORDER,
+            "cheapest": CHEAPEST_ORDER,
+        }.get(policy, [])
+
+        if not order:
+            return "openai"
+
+        if available_providers:
+            for provider in order:
+                if provider in available_providers:
+                    return provider
+            return order[0]  # none available, return first anyway
+
+        return order[0]

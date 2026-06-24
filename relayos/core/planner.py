@@ -14,7 +14,7 @@ Example:
 """
 from __future__ import annotations
 
-import json
+import json as json_lib  # use json_lib in execute() to avoid confusion
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -118,8 +118,6 @@ class ExecutionPlanner:
 
         # 2. Get the decomposition pattern
         pattern = TASK_PATTERNS.get(task_type, TASK_PATTERNS["coding"])
-        if not pattern:
-            pattern = TASK_PATTERNS["coding"]
 
         # 3. Build execution steps
         steps = []
@@ -181,8 +179,6 @@ class ExecutionPlanner:
         """
         task_type = self.scheduler.classify_task(task)
         pattern = TASK_PATTERNS.get(task_type, TASK_PATTERNS["coding"])
-        if not pattern:
-            pattern = TASK_PATTERNS["coding"]
 
         graph = []
         for step_def in pattern:
@@ -270,8 +266,7 @@ class TaskGraphExecutor:
             for src in input_sources:
                 extracted = self.artifacts.extract_fields(session_id, src, consume_fields)
                 if extracted:
-                    import json
-                    upstream += f"\nFrom {src}: {json.dumps(extracted, ensure_ascii=False)[:300]}"
+                    upstream += f"\nFrom {src}: {json_lib.dumps(extracted, ensure_ascii=False)[:300]}"
 
             prompt = schema.get("prompt_template", "{task}")
             prompt = prompt.replace("{task}", task)
@@ -292,10 +287,9 @@ class TaskGraphExecutor:
                     "model": model,
                 })
                 response = adapter.chat(prompt)
-                import json as _j
                 try:
-                    parsed = _j.loads(response.content)
-                except (_j.JSONDecodeError, TypeError):
+                    parsed = json_lib.loads(response.content)
+                except (json_lib.JSONDecodeError, TypeError):
                     parsed = {"result": response.content[:500]}
 
                 tokens = sum(response.usage.values()) if response.usage else 0
