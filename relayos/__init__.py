@@ -1,3 +1,3 @@
 """RelayOS — Persistent AI Workers for Developers. Like htop for your AI team."""
 
-__version__ = "0.2.0a5"
+__version__ = "0.2.0a6"

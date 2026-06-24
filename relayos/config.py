@@ -53,6 +53,7 @@ class RelayOSConfig:
     memory: dict = field(default_factory=lambda: {"type": "sqlite", "path": "~/.relayos/memory.db"})
     mcp_servers: dict[str, dict] = field(default_factory=dict)
     terminals: list[dict] = field(default_factory=list)  # terminal definitions
+    mode: str = "auto"  # "auto" | "edit" — execution mode
 
     def resolve_api_key(self, provider: str) -> Optional[str]:
         cfg = self.providers.get(provider)
@@ -99,4 +100,5 @@ def load_config(path: Optional[Path] = None) -> RelayOSConfig:
         memory=memory,
         mcp_servers=mcp_servers,
         terminals=terminals,
+        mode=raw.get("mode", "auto"),
     )

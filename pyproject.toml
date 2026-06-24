@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "relayos"
-version = "0.2.0a5"
+version = "0.2.0a6"
 description = "Agent Operating System — terminal-native AI workspace for persistent worker teams"
 readme = "README.md"
 license = {text = "Apache-2.0"}
