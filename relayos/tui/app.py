@@ -1,14 +1,13 @@
-"""RelayOS TUI — OpenCode-style chat workspace.
+"""RelayOS TUI — Conversation Graph Workspace.
 
-Layout: Status bar (top) | Messages (scrollable) | Input (bottom)
+Layout: Status bar | Messages | Input
 
-Keys:
-  Ctrl+P    Command palette
-  Ctrl+X    Leader key (then n/s/m/c/p/?)
-  Tab       Switch provider
-  Esc       Cancel / close overlay
-  Enter     Submit
-  Up/Down   History
+Core differentiators:
+  - Conversation Graph (fork/merge/attach)
+  - Cross-session Knowledge
+  - AUTO mode: workers auto-assigned
+
+Ctrl+P = command palette (ALL settings)
 """
 from __future__ import annotations
 
@@ -22,460 +21,496 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 
-from relayos.core.session import SessionStore, Session
-from relayos.providers import detect_providers, create_provider
-from relayos.providers.router import ProviderRouter
-from relayos.core.budget import BudgetGuard, BudgetLimits
-
 logger = logging.getLogger(__name__)
 
-# ── Key codes ─────────────────────────────────────────────────
-CTRL_P = "\x10"
-CTRL_X = "\x18"
-CTRL_C = "\x03"
-CTRL_N = "\x0e"
-CTRL_S = "\x13"
-CTRL_M = "\x0d"
-CTRL_A = "\x01"
-CTRL_E = "\x05"
-CTRL_K = "\x0b"
-CTRL_U = "\x15"
-CTRL_L = "\x0c"
-TAB = "\x09"
-ESC = "\x1b"
-ENTER = "\r"
-BACKSPACE = "\x7f"
+CTRL_P = "\x10"; CTRL_X = "\x18"; CTRL_C = "\x03"
+TAB = "\x09"; ESC = "\x1b"; ENTER = "\r"; BS = "\x7f"
 
 
 def _getch() -> str:
-    """Non-blocking single key read. Returns '' if no key."""
     if sys.platform == "win32":
         import msvcrt, ctypes
         try:
-            if not msvcrt.kbhit():
-                return ""
+            if not msvcrt.kbhit(): return ""
             cp = ctypes.windll.kernel32.GetConsoleCP()
             raw = msvcrt.getch()
-            # Extended keys (arrows, F-keys)
-            if raw in (b'\xe0', b'\x00'):
-                msvcrt.getch()
-                return ""
+            if raw in (b'\xe0', b'\x00'): msvcrt.getch(); return ""
             return raw.decode(f'cp{cp}')
-        except Exception:
-            return ""
+        except Exception: return ""
     else:
         import termios, tty, select
         try:
-            fd = sys.stdin.fileno()
-            old = termios.tcgetattr(fd)
+            fd = sys.stdin.fileno(); old = termios.tcgetattr(fd)
             tty.setraw(fd)
             try:
                 if select.select([sys.stdin], [], [], 0.03)[0]:
                     ch = sys.stdin.read(1)
                     if ch == ESC:
-                        # Try to read more for escape sequences
-                        rest = ""
                         if select.select([sys.stdin], [], [], 0.01)[0]:
-                            rest = sys.stdin.read(1)
-                            if rest == "[":
-                                if select.select([sys.stdin], [], [], 0.01)[0]:
-                                    rest += sys.stdin.read(1)
-                        if rest.startswith("["):
-                            return f"^{rest[1:]}"  # ^A, ^B, ^C, ^D for arrows
+                            r = sys.stdin.read(1)
+                            if r == "[" and select.select([sys.stdin], [], [], 0.01)[0]:
+                                r += sys.stdin.read(1)
+                            if r.startswith("["): return f"^{r[1:]}"
                         return ESC
                     return ch
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        except Exception:
-            pass
-        return ""
+            finally: termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except: return ""
 
 
-def _ctrl_name(ch: str) -> str:
-    """Convert control char to name for display."""
-    names = {
-        CTRL_P: "Ctrl+P", CTRL_X: "Ctrl+X", CTRL_C: "Ctrl+C",
-        CTRL_N: "Ctrl+N", CTRL_S: "Ctrl+S",
-        TAB: "Tab", ESC: "Esc", ENTER: "Enter",
-    }
-    return names.get(ch, repr(ch))
-
-
-# ── Command palette entries ───────────────────────────────────
-
-PALETTE_ITEMS = [
-    ("New conversation", "ctrl-x n", "新建对话"),
-    ("Session list", "ctrl-x s", "对话列表"),
-    ("Switch provider", "tab", "切换 Provider"),
-    ("Provider settings", "ctrl-x p", "Provider 设置"),
-    ("Cost report", "ctrl-x c", "消费报告"),
-    ("Toggle mode", "ctrl-x m", "切换模式"),
-    ("Help", "ctrl-x ?", "帮助"),
+# ── Command Tree ───────────────────────────────────────────────
+COMMANDS = [
+    {"cat": "Session", "items": [
+        {"name": "New Session", "key": "Ctrl+X N", "desc": "Start fresh conversation", "action": "new_session"},
+        {"name": "Fork Session", "key": "/fork", "desc": "Branch from current session", "action": "fork_session"},
+        {"name": "Merge Sessions", "key": "/merge", "desc": "Combine multiple sessions", "action": "merge_session"},
+        {"name": "Switch Session", "key": "Ctrl+X S", "desc": "Browse all sessions", "action": "switch_session"},
+        {"name": "Attach Session", "key": "/attach", "desc": "Import context from another session", "action": "attach_session"},
+    ]},
+    {"cat": "Knowledge", "items": [
+        {"name": "Remember Fact", "key": "/remember", "desc": "Save knowledge: /remember key: value", "action": "remember_fact"},
+        {"name": "Browse Knowledge", "key": "Ctrl+X K", "desc": "Explore stored facts", "action": "knowledge_view"},
+    ]},
+    {"cat": "Settings", "items": [
+        {"name": "Toggle Mode", "key": "Ctrl+X M", "desc": "Auto / Edit", "action": "toggle_mode"},
+        {"name": "Budget", "key": "Ctrl+X C", "desc": "Spending limits", "action": "cost_report"},
+        {"name": "Help", "key": "Ctrl+X ?", "desc": "Keyboard shortcuts", "action": "show_help"},
+    ]},
+    {"cat": "System", "items": [
+        {"name": "Quit", "key": "Ctrl+C", "desc": "Exit RelayOS", "action": "quit"},
+    ]},
 ]
 
-# ── Main TUI ───────────────────────────────────────────────────
+_ALL_ITEMS = []
+for cat in COMMANDS:
+    for item in cat["items"]:
+        item["cat"] = cat["cat"]
+        _ALL_ITEMS.append(item)
+
 
 def run_tui():
-    """Run the RelayOS TUI workspace."""
-    ss = SessionStore()
-    router = ProviderRouter()
-    bg = BudgetGuard()
-    start_time = time.time()
-    config_exists = (get_config_dir() / "config.yaml").exists()
+    from relayos.core.session import SessionStore
+    from relayos.core.budget import BudgetGuard
+    ss = SessionStore(); bg = BudgetGuard()
+    start = time.time(); import uuid
 
-    # State
-    input_buffer: list[str] = []
-    cursor_pos = 0
-    messages: list[dict] = []      # rendered messages
-    history: list[str] = []        # command history
-    history_idx = -1
-    current_session: Session | None = None
-    current_provider_idx = 0
-    providers = detect_providers()
-    enabled = [p for p in providers if p.enabled]
-
-    # UI mode
-    mode: str = "input"            # input | palette | sessions | help
-    palette_filter = ""
-    palette_selected = 0
-    sessions_list = ss.list_sessions(limit=20)
-    session_list_idx = 0
+    buf = []; msgs = []; history = []; hi = -1
+    sess = None  # current Session
+    view = "chat"  # chat | palette | sessions | graph
+    pal_filter = ""; pal_sel = 0
 
     layout = Layout()
-    layout.split_column(
-        Layout(name="header", size=1),
-        Layout(name="body", ratio=1),
-        Layout(name="footer", size=4),
-    )
+    layout.split_column(Layout(name="header", size=1),
+                        Layout(name="body", ratio=1),
+                        Layout(name="footer", size=3))
 
-    def get_provider_name() -> str:
-        if enabled and current_provider_idx < len(enabled):
-            p = enabled[current_provider_idx]
-            return p.model or p.provider
-        return "none"
+    def add(role, src, text):
+        msgs.append({"role": role, "from": src, "content": text})
 
-    def get_mode_label() -> str:
-        return f"[{'AUTO' if router.mode == 'auto' else 'EDIT'}]"
+    def session_label(s=None) -> str:
+        s = s or sess; return s.id[:10] if s else "—"
 
-    def add_msg(role: str, worker: str, content: str):
-        messages.append({"role": role, "from": worker, "content": content})
+    def parent_hint(s=None) -> str:
+        s = s or sess
+        if not s: return ""
+        try:
+            parents = ss.get_conversation_parents(s.id)
+            if parents:
+                tags = [f"#{p[:6]}" for p in parents[:3]]
+                return "Derived: " + ", ".join(tags)
+        except: pass
+        return ""
 
-    def submit_input():
-        nonlocal history_idx
-        text = "".join(input_buffer).strip()
-        if not text:
-            return
+    def budget_str() -> str:
+        try:
+            s = bg.get_status()
+            return f"${s['today']:.3f}" if s['today'] > 0 else "$0"
+        except: return "$0"
 
-        history.append(text)
-        history_idx = -1
+    def submit():
+        nonlocal hi, sess
+        text = "".join(buf).strip()
+        if not text: return
+        history.append(text); hi = -1; buf.clear()
 
-        # Check for slash commands
+        # ── Slash commands ──
         if text.startswith("/"):
-            cmd = text[1:].split()[0].lower()
+            parts = text[1:].split()
+            cmd = parts[0].lower()
+
             if cmd == "new":
-                import uuid
-                name = f"Conv-{uuid.uuid4().hex[:6]}"
-                sess = ss.create_session(name)
-                nonlocal current_session
-                current_session = sess
-                add_msg("system", "", f"New session: {sess.id}")
+                s = ss.create_session(f"Conv-{uuid.uuid4().hex[:6]}")
+                sess = s; msgs.clear()
+                add("sys", "", f"New session: {s.id}")
+
+            elif cmd == "fork":
+                if not sess:
+                    add("sys", "", "No session to fork. Start a conversation first.")
+                    return
+                child = ss.fork_session(sess.id)
+                sess = child; msgs.clear()
+                m = ss.get_messages(child.id, 30)
+                for x in m:
+                    d = x.to_dict()
+                    msgs.append({"role": d.get("role",""), "from": d.get("from",""), "content": d.get("content","")})
+                add("sys", "", f"Forked → {child.id[:10]} (from {sess.id[:10] if sess else '?'})")
+
+            elif cmd == "merge":
+                if len(parts) < 2:
+                    add("sys", "", "Usage: /merge <session_id1> [session_id2 ...]")
+                    return
+                ids = [p for p in parts[1:]]
+                child = ss.merge_sessions(ids)
+                sess = child; msgs.clear()
+                for pid in ids:
+                    mx = ss.get_messages(pid, 50)
+                    for x in mx:
+                        d = x.to_dict()
+                        msgs.append({"role": d.get("role",""), "from": d.get("from",""), "content": d.get("content","")})
+                add("sys", "", f"Merged {len(ids)} sessions → {child.id[:10]}")
+
+            elif cmd == "attach":
+                if len(parts) < 2:
+                    add("sys", "", "Usage: /attach <session_id>")
+                    return
+                pid = parts[1]
+                mx = ss.get_messages(pid, 30)
+                count = 0
+                for x in mx:
+                    d = x.to_dict()
+                    msgs.append({"role": d.get("role",""), "from": d.get("from",""), "content": d.get("content","")})
+                    count += 1
+                add("sys", "", f"Attached {count} messages from {pid[:10]}")
+
+            elif cmd == "remember":
+                rest = " ".join(parts[1:])
+                if ":" not in rest:
+                    add("sys", "", "Usage: /remember key: value")
+                    return
+                key, _, val = rest.partition(":")
+                key = key.strip(); val = val.strip()
+                try:
+                    from relayos.core.knowledge import ProjectStore
+                    ps = ProjectStore()
+                    pid = sess.project_id if sess else ""
+                    if not pid:
+                        pid = ps.create_project("default")
+                        if sess:
+                            ss._conn.execute("UPDATE sessions SET project_id=? WHERE id=?", (pid, sess.id))
+                            ss._conn.commit()
+                    ps.upsert_knowledge(pid, "general", key, val)
+                    add("sys", "", f"Remembered: {key} = {val}")
+                except Exception as e:
+                    add("sys", "", f"Failed to save: {e}")
+
             elif cmd == "clear":
-                messages.clear()
+                msgs.clear()
+
             elif cmd == "help":
-                show_help()
+                msgs.clear()
+                add("sys", "", "RelayOS — Conversation Graph Workspace")
+                add("sys", "", "")
+                add("sys", "", " Unique features:")
+                add("sys", "", "  /fork         Branch current session")
+                add("sys", "", "  /merge <ids>  Merge sessions together")
+                add("sys", "", "  /attach <id>  Import session context")
+                add("sys", "", "  /remember k:v Save knowledge")
+                add("sys", "", "")
+                add("sys", "", " Basic:")
+                add("sys", "", "  /new          New session")
+                add("sys", "", "  /clear        Clear messages")
+                add("sys", "", "  /cost         Spending report")
+                add("sys", "", "  /mode         Toggle auto/edit")
+                add("sys", "", "")
+                add("sys", "", " Shortcuts:")
+                add("sys", "", "  Ctrl+P        Command palette")
+                add("sys", "", "  Ctrl+X N/S/M  New/Session/Mode")
+                add("sys", "", "  Ctrl+X C/?    Cost/Help")
+                add("sys", "", "  Tab           Switch provider")
+                add("sys", "", "  Esc           Cancel")
+                add("sys", "", "  Up/Dn         History")
+
             elif cmd == "cost":
                 s = bg.get_status()
-                add_msg("system", "", f"Today: ${s['today']:.4f} / Monthly: ${s['monthly']:.4f}")
+                add("sys", "", f"Today: ${s['today']:.4f} / ${s['daily_limit']:.2f}")
+
+            elif cmd == "mode":
+                from relayos.providers.router import ProviderRouter
+                r = ProviderRouter()
+                r.mode = "edit" if r.mode == "auto" else "auto"
+                add("sys", "", f"Mode: {r.mode}")
             else:
-                add_msg("system", "", f"Unknown command: /{cmd}")
-        else:
-            # Auto-dispatch
-            add_msg("user", "you", text)
+                add("sys", "", f"Unknown: /{cmd}. Try /help")
+            return
+
+        # ── Regular chat ──
+        add("user", "you", text)
+        try:
+            from relayos.core.conversation import ConversationEngine
+            eng = ConversationEngine()
+            r = eng.chat(text)
+            add("assistant", r.get("worker","ai"), r.get("content","")[:500])
+            # Auto-save to session
+            sid = r.get("session_id","")
+            if sid and not sess:
+                sess = ss.get_session(sid)
+        except Exception as e:
+            add("sys", "", f"[ERR] {e}")
+
+    def execute_action(action: str):
+        nonlocal sess, view
+        if action == "new_session":
+            s = ss.create_session(f"Conv-{uuid.uuid4().hex[:6]}")
+            sess = s; msgs.clear()
+            add("sys", "", f"New: {s.id}")
+        elif action == "switch_session":
+            nonlocal sessions_list
+            sessions_list = ss.list_sessions(20); sl_sel = 0
+            view = "sessions"
+        elif action == "toggle_mode":
+            from relayos.providers.router import ProviderRouter
+            r = ProviderRouter()
+            r.mode = "edit" if r.mode == "auto" else "auto"
+            add("sys", "", f"Mode: {r.mode}")
+        elif action == "cost_report":
+            s = bg.get_status()
+            add("sys", "", f"Today: ${s['today']:.4f} / ${s['daily_limit']:.2f}")
+        elif action == "show_help":
+            submit.__globals__["_exec_help"] = True
+            # Trigger help by simulating /help
+            nonlocal buf
+            old = list(buf); buf.clear()
+            for ch in "/help": buf.append(ch)
+            submit()
+            buf = old
+        elif action == "knowledge_view":
             try:
-                from relayos.core.conversation import ConversationEngine
-                eng = ConversationEngine()
-                result = eng.chat(text)
-                content = result.get("content", "")
-                worker = result.get("worker", "ai")
-                add_msg("assistant", worker, content[:500])
+                from relayos.core.knowledge import ProjectStore
+                ps = ProjectStore()
+                projects = ps.list_projects()
+                if projects:
+                    add("sys", "", f"Projects: {len(projects)}")
+                    for p in projects[:5]:
+                        k = ps.query_knowledge(p["id"], max_items=3)
+                        add("sys", "", f"  {p['name']}: {len(k)} facts")
+                        for item in k[:3]:
+                            add("sys", "", f"    {item['key']} = {item.get('value','')[:50]}")
+                else:
+                    add("sys", "", "No knowledge stored. Use /remember key: value")
             except Exception as e:
-                add_msg("system", "", f"Error: {e}")
+                add("sys", "", f"Knowledge: {e}")
+        elif action == "quit":
+            sys.exit(0)
 
-        input_buffer.clear()
-        cursor_pos = 0
+    # Build palette items
+    def pal_items(filter_str=""):
+        if not filter_str: return list(_ALL_ITEMS)
+        f = filter_str.lower()
+        return [it for it in _ALL_ITEMS if f in it["name"].lower() or f in it["cat"].lower() or f in it.get("desc","").lower()]
 
-    def show_help():
-        messages.clear()
-        add_msg("system", "", "RelayOS Help")
-        add_msg("system", "", "")
-        add_msg("system", "", "Ctrl+P  Command palette")
-        add_msg("system", "", "Ctrl+X  Leader key (n=new, s=sessions, m=mode, c=cost, p=providers, ?=help)")
-        add_msg("system", "", "Tab     Switch provider")
-        add_msg("system", "", "Esc     Cancel / close")
-        add_msg("system", "", "Enter   Submit")
-        add_msg("system", "", "Up/Dn   History")
-        add_msg("system", "", "/new    New session")
-        add_msg("system", "", "/clear  Clear messages")
-        add_msg("system", "", "/help   This help")
-        add_msg("system", "", "/cost   Cost report")
-
-    def cycle_provider(delta: int = 1):
-        nonlocal current_provider_idx
-        if enabled:
-            current_provider_idx = (current_provider_idx + delta) % len(enabled)
-            p = enabled[current_provider_idx]
-            add_msg("system", "", f"Switched to: {p.display_name} ({p.model or p.provider})")
-
-    # Build palette render
-    def render_palette(filter_str: str) -> list[str]:
-        lines = [" Command Palette  (Ctrl+P to close)"]
-        lines.append(" " + "-" * 50)
-        filtered = [it for it in PALETTE_ITEMS if not filter_str or
-                    filter_str.lower() in it[0].lower() or
-                    filter_str.lower() in it[2].lower()]
-        for i, (name, key, cn) in enumerate(filtered):
-            sel = " >" if i == palette_selected else "  "
-            lines.append(f"{sel} {name:<30} {key:<12} {cn}")
-        lines.append("")
-        lines.append(" Type to filter...")
-        lines.append(f" > {filter_str}")
-        return lines
-
-    # ── Main loop ──
+    # Main loop
+    sessions_list = []; sl_sel = 0
     with Live(layout, refresh_per_second=8, screen=True) as live:
         try:
             while True:
                 key = _getch()
 
-                # ── Global handlers ──
-                if mode == "palette":
-                    if key == ESC or key == CTRL_P:
-                        mode = "input"
+                # ── Palette ──
+                if view == "palette":
+                    if key in (ESC, CTRL_P): view = "chat"; pal_filter = ""; pal_sel = 0
                     elif key == ENTER:
-                        # Execute selected palette item
-                        items = [it for it in PALETTE_ITEMS if not palette_filter or
-                                 palette_filter.lower() in it[0].lower() or
-                                 palette_filter.lower() in it[2].lower()]
-                        if 0 <= palette_selected < len(items):
-                            name = items[palette_selected][0]
-                            add_msg("system", "", f"Executing: {name}")
-                            if "Provider" in name and "settings" not in name:
-                                cycle_provider(1)
-                            elif "Cost" in name:
-                                s = bg.get_status()
-                                add_msg("system", "", f"Today: ${s['today']:.4f} / ${s['daily_limit']:.2f}")
-                            elif "Help" in name:
-                                show_help()
-                            elif "Toggle" in name:
-                                router.mode = "edit" if router.mode == "auto" else "auto"
-                                add_msg("system", "", f"Mode: {router.mode}")
-                        mode = "input"
-                    elif key == BACKSPACE:
-                        palette_filter = palette_filter[:-1]
-                    elif key and len(key) == 1 and key.isprintable():
-                        palette_filter += key
-                    elif key == "^A":  # Up arrow
-                        palette_selected = max(0, palette_selected - 1)
-                    elif key == "^B":  # Down arrow
-                        palette_selected += 1
+                        items = pal_items(pal_filter)
+                        if 0 <= pal_sel < len(items):
+                            execute_action(items[pal_sel].get("action",""))
+                        view = "chat"; pal_filter = ""; pal_sel = 0
+                    elif key == BS: pal_filter = pal_filter[:-1]; pal_sel = 0
+                    elif key == "^A": pal_sel = max(0, pal_sel - 1)
+                    elif key == "^B": pal_sel = min(len(pal_items(pal_filter))-1, pal_sel + 1)
+                    elif key and len(key)==1 and key.isprintable(): pal_filter += key; pal_sel = 0
                     continue
 
-                if mode == "sessions":
-                    if key == ESC:
-                        mode = "input"
+                # ── Sessions ──
+                if view == "sessions":
+                    if key == ESC: view = "chat"
                     elif key == ENTER and sessions_list:
-                        idx = session_list_idx
+                        idx = sl_sel
                         if 0 <= idx < len(sessions_list):
-                            sid = sessions_list[idx]["id"]
-                            sess = ss.get_session(sid)
-                            if sess:
-                                current_session = sess
-                                add_msg("system", "", f"Switched to: {sess.name}")
-                            mode = "input"
-                    elif key == "^A":  # Up
-                        session_list_idx = max(0, session_list_idx - 1)
-                    elif key == "^B":  # Down
-                        session_list_idx = min(len(sessions_list) - 1, session_list_idx + 1)
+                            s = ss.get_session(sessions_list[idx]["id"])
+                            if s: sess = s; msgs.clear()
+                            mx = ss.get_messages(s.id, 30) if s else []
+                            for x in mx:
+                                d = x.to_dict()
+                                msgs.append({"role":d.get("role",""), "from":d.get("from",""), "content":d.get("content","")})
+                            view = "chat"
+                    elif key == "^A": sl_sel = max(0, sl_sel - 1)
+                    elif key == "^B": sl_sel = min(len(sessions_list)-1, sl_sel + 1)
+                    elif key == "d" and sessions_list:
+                        idx = sl_sel
+                        if 0 <= idx < len(sessions_list):
+                            ss.delete_session(sessions_list[idx]["id"])
+                            sessions_list = ss.list_sessions(20)
+                            sl_sel = min(sl_sel, len(sessions_list)-1)
                     continue
 
-                # ── Input mode ──
-                if key == CTRL_P:
-                    mode = "palette"
-                    palette_filter = ""
-                    palette_selected = 0
-                elif key == TAB:
-                    cycle_provider(1)
+                # ── Chat ──
+                if key == CTRL_P: view = "palette"; pal_filter = ""; pal_sel = 0
+                elif key == ENTER: submit()
                 elif key == ESC:
-                    pass  # clear input if not empty
-                    if input_buffer:
-                        input_buffer.clear()
-                        cursor_pos = 0
-                elif key == ENTER:
-                    submit_input()
-                elif key == BACKSPACE:
-                    if cursor_pos > 0:
-                        cursor_pos -= 1
-                        input_buffer.pop(cursor_pos)
+                    if buf: buf.clear()
+                elif key == BS:
+                    if buf: buf.pop()
                 elif key == CTRL_X:
-                    # Leader key — wait for next key
-                    time.sleep(0.1)
-                    next_key = _getch()
-                    if next_key == "n":
-                        import uuid
-                        name = f"Conv-{uuid.uuid4().hex[:6]}"
-                        sess = ss.create_session(name)
-                        current_session = sess
-                        add_msg("system", "", f"New session: {sess.id}")
-                        messages.clear()
-                    elif next_key == "s":
-                        mode = "sessions"
-                        sessions_list = ss.list_sessions(limit=20)
-                        session_list_idx = 0
-                    elif next_key == "m":
-                        router.mode = "edit" if router.mode == "auto" else "auto"
-                        add_msg("system", "", f"Mode: {router.mode}")
-                    elif next_key == "c":
+                    time.sleep(0.1); nk = _getch()
+                    if nk == "n":
+                        s = ss.create_session(f"Conv-{uuid.uuid4().hex[:6]}")
+                        sess = s; msgs.clear()
+                        add("sys", "", f"New: {s.id}")
+                    elif nk == "s":
+                        sessions_list = ss.list_sessions(20); sl_sel = 0; view = "sessions"
+                    elif nk == "m":
+                        from relayos.providers.router import ProviderRouter
+                        r = ProviderRouter(); r.mode = "edit" if r.mode == "auto" else "auto"
+                        add("sys", "", f"Mode: {r.mode}")
+                    elif nk == "c":
                         s = bg.get_status()
-                        add_msg("system", "", f"Today: ${s['today']:.4f} / ${s['daily_limit']:.2f}")
-                    elif next_key == "p":
-                        add_msg("system", "", "Provider settings: edit ~/.relayos/config.yaml")
-                    elif next_key == "?":
-                        show_help()
-                elif key == CTRL_C:
-                    break
-                elif key == CTRL_U:
-                    input_buffer.clear()
-                    cursor_pos = 0
-                elif key == CTRL_A:
-                    cursor_pos = 0
-                elif key == CTRL_E:
-                    cursor_pos = len(input_buffer)
-                elif key == "^A":  # Up arrow
+                        add("sys", "", f"Today: ${s['today']:.4f} / ${s['daily_limit']:.2f}")
+                    elif nk == "k":
+                        execute_action("knowledge_view")
+                    elif nk == "g":
+                        view = "graph"
+                    elif nk == "?":
+                        submit.__globals__["_tmp"] = list(buf); buf.clear()
+                        for ch in "/help": buf.append(ch); submit()
+                elif key == CTRL_C: break
+                elif key == CTRL_U: buf.clear()
+                elif key == "^A":
                     if history:
-                        history_idx = max(-1, history_idx - 1)
-                        if history_idx >= 0:
-                            input_buffer = list(history[min(history_idx, len(history)-1)])
-                        else:
-                            input_buffer = []
-                        cursor_pos = len(input_buffer)
-                elif key == "^B":  # Down arrow
+                        hi = max(-1, hi-1)
+                        buf = list(history[min(hi,len(history)-1)]) if hi >= 0 else []
+                elif key == "^B":
                     if history:
-                        history_idx = min(len(history), history_idx + 1)
-                        if history_idx < len(history):
-                            input_buffer = list(history[history_idx])
-                        else:
-                            input_buffer = []
-                        cursor_pos = len(input_buffer)
-                elif key and len(key) == 1:
-                    input_buffer.insert(cursor_pos, key)
-                    cursor_pos += 1
+                        hi = min(len(history), hi+1)
+                        buf = list(history[hi]) if 0 <= hi < len(history) else []
+                elif key and len(key)==1: buf.append(key)
 
-                # ── Build header ──
-                sess_id = current_session.id[:12] if current_session else "no session"
-                provider = get_provider_name()
-                budget = bg.get_status()
-                cost_str = f"${budget['today']:.3f}" if budget['today'] > 0 else "$0"
-                h = Text()
-                h.append(" RelayOS  ", style="bold blue")
-                h.append(f" {sess_id}  ", style="cyan")
-                h.append(f" {provider}  ", style="green")
-                h.append(f" {get_mode_label()}  ", style="yellow")
-                h.append(f" {cost_str}", style="dim")
-                layout["header"].update(Panel(h, style="bold", height=1))
+                # ── Render ──
+                ph = parent_hint()
+                bc = budget_str()
+                sl = session_label()
 
-                # ── Build body ──
-                body_lines = []
+                # Status bar — show graph info prominently
+                h_parts = [(" RelayOS ", "bold blue"), (f" {sl} ", "cyan")]
+                if ph:
+                    h_parts.append((f" {ph} ", "yellow"))
+                h_parts.append((" [AUTO]", "green"))
+                h_parts.append((f" {bc}", "dim"))
+                layout["header"].update(Panel(Text.assemble(*h_parts), style="bold", height=1))
 
-                if mode == "palette":
-                    body_lines.extend(render_palette(palette_filter))
-                elif mode == "sessions":
-                    body_lines.append(" Sessions  (Esc to close)")
-                    body_lines.append(" " + "-" * 50)
+                # Body
+                lines = []
+                if view == "palette":
+                    items = pal_items(pal_filter)
+                    lines.append("  Command Palette  (Esc close)")
+                    lines.append("  " + "-"*55)
+                    shown = []
+                    for i, it in enumerate(items):
+                        if it["cat"] not in shown:
+                            shown.append(it["cat"]); lines.append(f"  {it['cat']}:")
+                        sel = " >" if i == pal_sel else "  "
+                        k = f" ({it['key']})" if it.get("key") else ""
+                        lines.append(f"{sel} {it['name']:<25}{k:<15}{it.get('desc','')}")
+                    lines.append(f"  Filter: {pal_filter or '(type)'}")
+                    lines.append("  Up/Down | Enter | Esc")
+
+                elif view == "graph":
+                    if key == ESC:
+                        view = "chat"
+                    lines.append("  Conversation Graph  (Esc back, Tab cycle)")
+                    lines.append("  " + "-"*55)
+                    graph_text = ss.build_graph_ascii(sess.id if sess else "")
+                    for line in graph_text.split("\n"):
+                        lines.append(f"  {line}")
+                    lines.append("")
+                    lines.append("  > current session")
+                    lines.append("  Ctrl+X G to refresh | Esc to close")
+
+                elif view == "sessions":
+                    lines.append("  Sessions  (Esc back, d delete)")
+                    lines.append("  " + "-"*55)
                     for i, s in enumerate(sessions_list):
-                        sel = " >" if i == session_list_idx else "  "
-                        name = s.get("name", "?")[:30]
-                        age = s.get("updated_at", 0)
-                        ago = ""
-                        if age:
-                            mins = int((time.time() - age) / 60)
-                            ago = f"{mins}min ago" if mins < 120 else f"{mins//60}h ago"
-                        body_lines.append(f"{sel} {name:<34} {ago}")
-                    body_lines.append("")
-                    body_lines.append(" Enter=open  Esc=close")
+                        sel = " >" if i == sl_sel else "  "
+                        name = s.get("name","?")[:30]
+                        ts = s.get("updated_at",0)
+                        ago = f"{int((time.time()-ts)/60)}m ago" if ts else ""
+                        par = ""
+                        try:
+                            pids = ss.get_conversation_parents(s["id"])
+                            if pids: par = f" <- {len(pids)} merged"
+                        except: pass
+                        lines.append(f"{sel} {name:<30} {ago:<10}{par}")
+                    lines.append("")
+                    lines.append("  Enter=open  d=delete  Esc=back")
+
                 else:
-                    if not messages:
-                        body_lines.append("")
-                        body_lines.append("  RelayOS — Agent Workspace")
-                        body_lines.append("  " + "-" * 40)
-                        body_lines.append("")
-                        body_lines.append("  Type your task below and press Enter.")
-                        body_lines.append("  Ctrl+P for commands. Tab to switch provider.")
-                        body_lines.append("")
+                    if not msgs:
+                        lines.append("")
+                        lines.append("  RelayOS — Conversation Graph Workspace")
+                        lines.append("  " + "-"*50)
+                        lines.append("  Type a task below, press Enter.")
+                        lines.append("  /fork  /merge  /attach  /remember  /help")
+                        lines.append("  Ctrl+P for command palette")
+                        lines.append("")
 
-                    for m in messages[-30:]:
-                        role = m.get("role", "")
-                        worker = m.get("from", "")
-                        content = m.get("content", "")
-                        if role == "system":
-                            body_lines.append(f"  {content}")
-                        elif role == "user":
-                            for line in content.split("\n")[:3]:
-                                body_lines.append(f"  > {line}")
+                    for m in msgs[-40:]:
+                        r = m.get("role",""); f = m.get("from",""); c = m.get("content","")
+                        if r == "sys":
+                            for line in c.split("\n"): lines.append(f"  {line}")
+                        elif r == "user":
+                            for line in c.split("\n")[:2]: lines.append(f"  > {line}")
                         else:
-                            worker_label = worker or "ai"
-                            for line in content.split("\n")[:10]:
-                                if len(body_lines) > 100:
-                                    body_lines.append("  ... [truncated]")
-                                    break
-                                body_lines.append(f"  [{worker_label}] {line}")
+                            for line in c.split("\n")[:8]:
+                                if len(lines) > 200: break
+                                lines.append(f"  [{f}] {line}")
 
-                layout["body"].update(Panel("\n".join(body_lines[-80:]), border_style="dim"))
+                layout["body"].update(Panel("\n".join(lines[-80:]), border_style="dim"))
 
-                # ── Build footer (input area) ──
-                input_str = "".join(input_buffer)
-                foot_lines = [f"> {input_str}" + ("█" if mode == "input" else "")]
-                if mode == "input":
-                    foot_lines.append("  Ctrl+P palette  Tab=provider  Enter=send")
-                layout["footer"].update(Panel("\n".join(foot_lines), style="green", height=4))
+                # Footer
+                inp = "".join(buf)
+                foot = [f"> {inp}" + ("█" if view == "chat" else "")]
+                if view == "chat":
+                    foot.append("  Ctrl+P=palette  /fork  /merge  /remember  /help")
+                layout["footer"].update(Panel("\n".join(foot), style="green", height=3))
 
                 live.refresh()
                 time.sleep(0.03)
 
-        except KeyboardInterrupt:
-            pass
+        except KeyboardInterrupt: pass
 
     print("\033[2J\033[H", end="")
 
 
 def get_config_dir() -> Path:
-    from relayos.config import get_config_dir as _g
-    return _g()
+    from relayos.config import get_config_dir as _g; return _g()
+
+
+def auto_dispatch(task: str) -> dict:
+    from relayos.core.conversation import ConversationEngine
+    return ConversationEngine().chat(task)
 
 
 def main():
-    """Entry for `relay` command."""
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("cmd", nargs="?")
     p.add_argument("args", nargs="*")
     a = p.parse_args()
-
-    if a.cmd and a.cmd not in ("ui", "tui", ""):
+    if a.cmd and a.cmd not in ("ui","tui",""):
         task = a.cmd + " " + " ".join(a.args)
         try:
-            result = auto_dispatch(task)
-            print(result.get("content", ""))
-        except Exception as e:
-            print(f"[ERR] {e}", file=sys.stderr)
+            r = auto_dispatch(task)
+            print(r.get("content",""))
+        except Exception as e: print(f"[ERR] {e}", file=sys.stderr)
         return
-
     run_tui()
-
-
-def auto_dispatch(task: str) -> dict:
-    from relayos.core.conversation import ConversationEngine
-    eng = ConversationEngine()
-    return eng.chat(task)
 
 
 if __name__ == "__main__":

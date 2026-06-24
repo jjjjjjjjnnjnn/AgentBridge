@@ -258,6 +258,62 @@ class SessionStore:
                              (child_id, pid))
             conn.commit()
 
+    def fork_session(self, parent_id: str, name: str = "") -> Session:
+        """Create a new session that's a fork of an existing one.
+
+        The child session copies the parent's messages.
+        """
+        parent = self.get_session(parent_id)
+        if not parent:
+            raise ValueError(f"Session '{parent_id}' not found")
+        child = self.create_session(name or f"Fork of {parent.name}", parent.mode,
+                                     parent.participants, parent.profile, parent.project_id)
+        # Copy messages from parent
+        msgs = self.get_messages(parent_id, limit=200)
+        for m in msgs:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute(
+                    "INSERT INTO messages (id, session_id, role, from_worker, content, event_type, model, tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (f"msg-{uuid.uuid4().hex[:8]}", child.id, m.role, m.from_worker, m.content, m.event_type, m.model, m.tokens, m.created_at),
+                )
+                conn.commit()
+        # Record graph edge: child was forked FROM parent
+        self.add_integrated_conversation(child.id, [parent_id])
+        return child
+
+    def merge_sessions(self, session_ids: list[str], name: str = "",
+                       profile: str = "balanced") -> Session:
+        """Merge multiple sessions into one integrated conversation.
+
+        The new session combines messages from all parents.
+        """
+        child = self.create_session(name or f"Merge of {len(session_ids)} sessions",
+                                     "integrated", profile=profile)
+        # Record all parents
+        self.add_integrated_conversation(child.id, session_ids)
+        # Copy all messages from parents
+        for pid in session_ids:
+            msgs = self.get_messages(pid, limit=100)
+            for m in msgs:
+                with sqlite3.connect(self._db_path) as conn:
+                    conn.execute(
+                        "INSERT INTO messages (id, session_id, role, from_worker, content, event_type, model, tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (f"msg-{uuid.uuid4().hex[:8]}", child.id, m.role, m.from_worker, m.content, m.event_type, m.model, m.tokens, m.created_at),
+                    )
+                    conn.commit()
+        return child
+
+    def get_parent_summary(self, sid: str) -> str:
+        """Get a human-readable summary of parent sessions."""
+        parents = self.get_conversation_parents(sid)
+        if not parents:
+            return ""
+        names = []
+        for pid in parents:
+            p = self.get_session(pid)
+            names.append(p.name[:15] if p else pid[:8])
+        return "Derived: " + ", ".join(f"#{pid[:6]}" for pid in parents)
+
     def get_conversation_parents(self, sid: str) -> list[str]:
         """Get the IDs of conversations that were merged into this one."""
         rows = self._conn.execute(
@@ -278,7 +334,6 @@ class SessionStore:
         """Get the full graph context for a conversation (ancestors + descendants)."""
         parents = self.get_conversation_parents(sid)
         children = self.get_conversation_children(sid)
-        # Get grandparents
         grandparents = []
         for p in parents:
             grandparents.extend(self.get_conversation_parents(p))
@@ -287,6 +342,68 @@ class SessionStore:
             "descendants": children,
             "all": list(set(parents + grandparents + children)),
         }
+
+    def get_all_graph_edges(self) -> list[tuple[str, str]]:
+        """Get ALL graph edges for full graph rendering."""
+        with sqlite3.connect(self._db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT parent_id, child_id FROM conversation_graph ORDER BY parent_id"
+            ).fetchall()
+            return [(r["parent_id"], r["child_id"]) for r in rows]
+
+    def build_graph_ascii(self, highlight_id: str = "") -> str:
+        """Build an ASCII tree of the conversation graph.
+
+        Shows all sessions with fork/merge relationships.
+        Use box-drawing characters for visual tree.
+        """
+        edges = self.get_all_graph_edges()
+        if not edges:
+            return "  (no graph yet. use /fork, /merge to create one.)"
+
+        children_of = {}
+        all_ids = set()
+        for p, c in edges:
+            children_of.setdefault(p, []).append(c)
+            all_ids.add(p)
+            all_ids.add(c)
+
+        has_parent = {c for _, c in edges}
+        roots = sorted(all_ids - has_parent, key=lambda x: x or "")
+
+        names = {}
+        for sid in all_ids:
+            s = self.get_session(sid)
+            names[sid] = s.name[:20] if s else sid[:8]
+
+        lines = []
+
+        def render(sid, prefix="", last=True):
+            kids = children_of.get(sid, [])
+            marker = "└── " if last else "├── "
+            conn_pre = "    " if last else "│   "
+            hl = " >" if sid == highlight_id else "  "
+            label = f"{names.get(sid, sid[:8])} [{sid[:6]}]"
+            lines.append(f"{prefix}{marker}{hl}{label}")
+            for i, k in enumerate(kids):
+                render(k, prefix + conn_pre, i == len(kids) - 1)
+
+        if len(roots) == 1:
+            render(roots[0], "", True)
+        else:
+            for i, r in enumerate(roots):
+                last = (i == len(roots) - 1)
+                marker = "└── " if last else "├── "
+                hl = " >" if r == highlight_id else "  "
+                label = f"{names.get(r, r[:8])} [{r[:6]}]"
+                lines.append(f"{marker}{hl}{label}")
+                kids = children_of.get(r, [])
+                conn_pre = "    " if last else "│   "
+                for j, k in enumerate(kids):
+                    render(k, conn_pre, j == len(kids) - 1)
+
+        return "\n".join(lines) if lines else "  (empty)"
 
     def list_project_conversations(self, project_id: str, limit: int = 20) -> list[dict]:
         """List all conversations in a project."""
