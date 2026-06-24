@@ -145,7 +145,7 @@ class SessionStore:
                     "ALTER TABLE sessions ADD COLUMN project_id TEXT DEFAULT ''",
                 ]
                 for stmt in migrations:
-                    col = stmt.split()[3]
+                    col = stmt.split()[5]
                     if col not in existing:
                         conn.execute(stmt)
                 conn.commit()

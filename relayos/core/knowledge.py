@@ -174,9 +174,15 @@ class ProjectStore:
             (project_id,),
         ).fetchall()
 
+        # Group knowledge by domain
+        by_domain: dict[str, list[dict]] = {}
+        for k in knowledge:
+            domain = k.get("domain", "general")
+            by_domain.setdefault(domain, []).append(k)
+
         return {
             "total_knowledge": len(knowledge),
-            "by_domain": {},
+            "by_domain": {d: len(items) for d, items in by_domain.items()},
             "recent_sessions": [dict(s) for s in sessions],
         }
 

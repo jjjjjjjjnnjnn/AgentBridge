@@ -139,7 +139,8 @@ class FlowRouter:
             estimated_tokens=self._estimate_tokens(prompt),
         )
 
-    def _estimate_tokens(self, text: str) -> int:
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
         """Rough token estimation (4 chars per token)."""
         return len(text) // 4
 
@@ -148,4 +149,3 @@ class FlowRouter:
         return self.route(prompt).task_type
 
 
-# Built-in routing YAML for user configuration

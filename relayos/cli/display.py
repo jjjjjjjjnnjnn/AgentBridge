@@ -5,14 +5,11 @@ for CLI workflow runs. No external dependencies — uses ANSI escape codes.
 """
 from __future__ import annotations
 
-import itertools
 import os
 import shutil
 import sys
 import threading
 import time
-from collections import OrderedDict
-from datetime import datetime, timezone
 from typing import Optional
 
 # ASCII fallback for Windows consoles without Unicode support
@@ -33,14 +30,11 @@ if _USE_UNICODE:
     FAIL_CHAR = "✗"
     WARN_CHAR = "⚠"
 else:
-    SPINNER_CHARS = r"|/-\"
+    SPINNER_CHARS = "|/-\\"
     PASS_CHAR = "+"
     FAIL_CHAR = "x"
     WARN_CHAR = "!"
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%H:%M:%S")
 
 
 class StepDisplay:
@@ -165,13 +159,12 @@ class WorkflowDisplay:
 
     def _animate(self):
         """Continuously redraw while running."""
+        sys.stderr.write("\033[?25l")  # hide cursor once
         try:
             while self._running and not self._is_finished():
                 frame = self._render()
-                sys.stderr.write("\033[?25l")  # hide cursor
                 sys.stderr.write("\033[J")  # clear below
                 sys.stderr.write(frame)
-                sys.stderr.write("\033[?25h")  # show cursor
                 sys.stderr.flush()
                 time.sleep(0.08)
         except Exception:
@@ -180,13 +173,13 @@ class WorkflowDisplay:
         # Final render
         try:
             final = self._render()
-            sys.stderr.write("\033[?25l")
             sys.stderr.write("\033[J")
             sys.stderr.write(final)
-            sys.stderr.write("\033[?25h")
             sys.stderr.write("\n")
         except Exception:
             sys.stderr.write("\n")
+        finally:
+            sys.stderr.write("\033[?25h")  # show cursor
 
     def stop(self):
         with self._lock:

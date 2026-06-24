@@ -897,7 +897,6 @@ def session_execute(task: tuple[str], profile: str):
     """
     from relayos.core.planner import ExecutionPlanner, TaskGraphExecutor
     from relayos.core.session import SessionStore
-    import uuid
 
     planner = ExecutionPlanner()
     executor = TaskGraphExecutor()

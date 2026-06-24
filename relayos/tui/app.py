@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+import uuid
 from pathlib import Path
 
 from rich.layout import Layout
@@ -62,7 +63,7 @@ def _getch() -> str:
                         return ESC
                     return ch
             finally: termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        except: return ""
+        except Exception: return ""
 
 
 # ── Command Tree ───────────────────────────────────────────────
@@ -99,7 +100,7 @@ def run_tui():
     from relayos.core.session import SessionStore
     from relayos.core.budget import BudgetGuard
     ss = SessionStore(); bg = BudgetGuard()
-    start = time.time(); import uuid
+    start = time.time()
 
     buf = []; msgs = []; history = []; hi = -1
     sess = None  # current Session
@@ -126,14 +127,14 @@ def run_tui():
             if parents:
                 tags = [f"#{p[:6]}" for p in parents[:3]]
                 return "Derived: " + ", ".join(tags)
-        except: pass
+        except Exception: pass
         return ""
 
     def budget_str() -> str:
         try:
             s = bg.get_status()
             return f"${s['today']:.3f}" if s['today'] > 0 else "$0"
-        except: return "$0"
+        except Exception: return "$0"
 
     def submit():
         nonlocal hi, sess
@@ -471,7 +472,8 @@ def run_tui():
                         try:
                             pids = ss.get_conversation_parents(s["id"])
                             if pids: par = f" <- {len(pids)} merged"
-                        except: pass
+                        except Exception:
+                            pass
                         lines.append(f"{sel} {name:<30} {ago:<10}{par}")
                     lines.append("")
                     lines.append("  Enter=open  d=delete  Esc=back")
