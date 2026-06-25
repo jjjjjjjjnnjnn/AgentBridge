@@ -486,6 +486,12 @@ def run_tui():
                 h_parts = [(" RelayOS ", "bold blue"), (f" {sl} ", "cyan")]
                 if ph:
                     h_parts.append((f" {ph} ", "yellow"))
+                # Show current provider
+                tp_name = ""
+                if tab_providers and 0 <= tab_provider_idx < len(tab_providers):
+                    tp_name = tab_providers[tab_provider_idx].display_name[:10]
+                if tp_name:
+                    h_parts.append((f" [{tp_name}]", "cyan"))
                 h_parts.append((f" [{mode_state.upper()}]", "green"))
                 h_parts.append((f" {bc}", "dim"))
                 layout["header"].update(Panel(Text.assemble(*h_parts), style="bold", height=1))
