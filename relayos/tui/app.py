@@ -132,6 +132,7 @@ def run_tui():
     sess = None  # current Session
     view = "chat"  # chat | palette | sessions | graph
     pal_filter = ""; pal_sel = 0
+    session_search = ""; session_focus = "search"; session_items = []
     mode_state = "auto"  # auto | edit
 
     layout = Layout()
@@ -294,7 +295,8 @@ def run_tui():
             add("sys", "", f"New: {s.id}")
         elif action == "switch_session":
             nonlocal sessions_list
-            sessions_list = ss.list_sessions(20); sl_sel = 0
+            session_search = ""; session_focus = "search"; sl_sel = 0
+            sessions_list = ss.search_sessions(); session_items = list(sessions_list)
             view = "sessions"
         elif action == "toggle_mode":
             mode_state = "edit" if mode_state == "auto" else "auto"
@@ -371,25 +373,50 @@ def run_tui():
 
                 # ── Sessions ──
                 elif view == "sessions":
-                    if key == ESC: view = "chat"
-                    elif key == ENTER and sessions_list:
+                    if key == ESC:
+                        session_search = ""; view = "chat"
+                    elif key == TAB:
+                        session_focus = "list" if session_focus == "search" else "search"
+                    elif key == "^A":  # Up
+                        if session_focus == "list" and session_items:
+                            sl_sel = max(0, sl_sel - 1)
+                        elif session_focus == "search" and session_items:
+                            session_focus = "list"; sl_sel = len(session_items) - 1
+                    elif key == "^B":  # Down
+                        if session_focus == "list" and session_items:
+                            sl_sel = min(len(session_items)-1, sl_sel + 1)
+                        elif session_focus == "search" and session_items:
+                            session_focus = "list"; sl_sel = 0
+                    elif key == "^D":  # Left — switch to search
+                        session_focus = "search"
+                    elif key == "^C":  # Right — switch to list
+                        if session_items: session_focus = "list"
+                    elif key == ENTER and session_items:
                         idx = sl_sel
-                        if 0 <= idx < len(sessions_list):
-                            s = ss.get_session(sessions_list[idx]["id"])
+                        if 0 <= idx < len(session_items):
+                            s = ss.get_session(session_items[idx]["id"])
                             if s: sess = s; msgs.clear()
                             mx = ss.get_messages(s.id, 30) if s else []
                             for x in mx:
                                 d = x.to_dict()
                                 msgs.append({"role":d.get("role",""), "from":d.get("from",""), "content":d.get("content","")})
-                            view = "chat"
-                    elif key == "^A": sl_sel = max(0, sl_sel - 1)
-                    elif key == "^B": sl_sel = min(len(sessions_list)-1, sl_sel + 1)
-                    elif key == "d" and sessions_list:
+                            view = "chat"; session_search = ""
+                    elif key == "d" and session_items:
                         idx = sl_sel
-                        if 0 <= idx < len(sessions_list):
-                            ss.delete_session(sessions_list[idx]["id"])
-                            sessions_list = ss.list_sessions(20)
-                            sl_sel = min(sl_sel, len(sessions_list)-1)
+                        if 0 <= idx < len(session_items):
+                            ss.delete_session(session_items[idx]["id"])
+                            sessions_list = ss.search_sessions(session_search); session_items = list(sessions_list)
+                            sl_sel = min(sl_sel, len(session_items)-1)
+                    elif key in (BS, BS_WIN):  # Backspace in search
+                        if session_search:
+                            session_search = session_search[:-1]
+                            sessions_list = ss.search_sessions(session_search); session_items = list(sessions_list)
+                            sl_sel = 0
+                    elif key and len(key) == 1 and key.isprintable():  # Type to search
+                        session_search += key
+                        sessions_list = ss.search_sessions(session_search); session_items = list(sessions_list)
+                        sl_sel = 0
+                        session_focus = "list" if session_items else "search"
 
                 # ── Graph ──
                 elif view == "graph":
@@ -460,22 +487,40 @@ def run_tui():
                     lines.append("  Esc to close")
 
                 elif view == "sessions":
-                    lines.append("  Sessions  (Esc back, d delete)")
+                    lines.append("  Sessions  (Esc to close)")
                     lines.append("  " + "-"*55)
-                    for i, s in enumerate(sessions_list):
-                        sel = " >" if i == sl_sel else "  "
-                        name = s.get("name","?")[:30]
-                        ts = s.get("updated_at",0)
-                        ago = f"{int((time.time()-ts)/60)}m ago" if ts else ""
-                        par = ""
-                        try:
-                            pids = ss.get_conversation_parents(s["id"])
-                            if pids: par = f" <- {len(pids)} merged"
-                        except Exception:
-                            pass
-                        lines.append(f"{sel} {name:<30} {ago:<10}{par}")
+                    # Search bar
+                    search_disp = session_search if session_search else "type to search"
+                    sf = " >" if session_focus == "search" else "  "
+                    cur = "|" if session_focus == "search" else ""
+                    lines.append(f"{sf} Search: {search_disp}{cur}")
                     lines.append("")
-                    lines.append("  Enter=open  d=delete  Esc=back")
+                    # Session list
+                    items = session_items if session_items else sessions_list
+                    if not items:
+                        lines.append("  No sessions found. Start a new conversation!")
+                    else:
+                        for i, s in enumerate(items):
+                            sel = " >" if i == sl_sel and session_focus == "list" else "  "
+                            name = s.get("name","?")[:28]
+                            ts = s.get("updated_at",0)
+                            ago = f"{int((time.time()-ts)/60)}m" if ts else ""
+                            model = s.get("last_model","")[:12]
+                            preview = s.get("preview","")[:50]
+                            # Parent hint
+                            par = ""
+                            try:
+                                pids = ss.get_conversation_parents(s["id"])
+                                if pids: par = f" [#{len(pids)}]"
+                            except Exception:
+                                pass
+                            pmodel = f" [{model}]" if model else ""
+                            pp = f"  {preview}" if preview else ""
+                            lines.append(f"{sel} {name:<28}{pmodel:<14}{ago:>8}{par}")
+                            if preview:
+                                lines.append(f"     {pp}")
+                    lines.append("")
+                    lines.append("  Tab=switch  ↑↓=navigate  Enter=open  d=delete  Esc=close")
 
                 else:
                     if not msgs:

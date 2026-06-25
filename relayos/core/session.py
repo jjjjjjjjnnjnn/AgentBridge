@@ -236,6 +236,45 @@ class SessionStore:
         ).fetchall()
         return [SessionMessage(**dict(r)) for r in rows]
 
+    def get_preview(self, session_id: str, max_chars: int = 80) -> str:
+        """Get first user or assistant message preview for a session."""
+        row = self._conn.execute(
+            "SELECT content FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY created_at ASC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        if row:
+            text = row["content"].strip()
+            return (text[:max_chars] + "...") if len(text) > max_chars else text
+        return ""
+
+    def search_sessions(self, query: str = "", limit: int = 100) -> list[dict]:
+        """Search sessions by name or content, with preview."""
+        if query:
+            q = f"%{query}%"
+            rows = self._conn.execute(
+                "SELECT DISTINCT s.id, s.name, s.mode, s.last_model, s.created_at, s.updated_at "
+                "FROM sessions s "
+                "LEFT JOIN messages m ON m.session_id = s.id "
+                "WHERE s.name LIKE ? OR m.content LIKE ? "
+                "ORDER BY s.updated_at DESC LIMIT ?",
+                (q, q, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT s.id, s.name, s.mode, s.last_model, s.created_at, s.updated_at "
+                "FROM sessions s ORDER BY s.updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["preview"] = self.get_preview(d["id"])
+            d["msg_count"] = self._conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE session_id=?", (d["id"],)
+            ).fetchone()[0]
+            result.append(d)
+        return result
+
     def get_timeline(self, session_id: str, limit: int = 20) -> list[dict]:
         """Get formatted timeline for UI display."""
         msgs = self.get_messages(session_id, limit)
