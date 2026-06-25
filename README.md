@@ -61,13 +61,13 @@ pip install relayos && relay
 | Feature | What It Does |
 |---------|-------------|
 | 🔀 **Conversation Graph** | `/fork` `/merge` `/attach` — Git for conversations |
-| 🧠 **Auto Routing** | Free models first, premium only when needed |
+| 🧠 **Auto Routing** | CLI-first, zero-config, auto-detects installed tools |
 | 💰 **Budget Guard** | Per-task/daily/monthly hard limits, no surprise bills |
-| 🔌 **Unified Provider** | API + CLI — zero-config, auto-detect installed tools |
-| ⌨️ **OpenCode-Style TUI** | Ctrl+P command palette, Tab switch, Chat interface |
+| 🔌 **Unified Provider** | API + CLI — zero-config, Tab to cycle providers |
+| ⌨️ **OpenCode-Style TUI** | Ctrl+P command palette, Tab/Shift+Tab, Switch Session panel |
 | 💾 **Cross-Session Memory** | `/remember` facts that persist across conversations |
 | 🌐 **i18n** | Chinese + English auto-detect |
-| 🚀 **Auto/Edit Mode** | Auto (no ask) or Edit (confirm before each call) |
+| 🚀 **3 Modes** | Auto (no ask) / Edit (confirm) / Group (multi-provider) |
 
 ---
 
@@ -114,8 +114,8 @@ relayos cost report
 /new               New conversation
 /clear             Clear messages
 Ctrl+P             Command palette
-Ctrl+X S           Session list
-Ctrl+X G           Conversation graph
+Tab                Cycle provider
+Shift+Tab          Cycle mode
 ```
 
 ---
@@ -123,60 +123,70 @@ Ctrl+X G           Conversation graph
 ## 🖥️ The TUI
 
 ```
-┌─ RelayOS  sess-31  Derived: #12 #25  [AUTO]  $0.02 ─┐
-│                                                       │
-│  > 设计一个支付系统                                     │
-│                                                       │
-│  [architect] 建议使用事件溯源架构，原因如下：           │
-│    1. 幂等性天然保证                                   │
-│    2. 审计日志免费获得                                 │
-│                                                       │
-│  [reviewer] 发现2个安全问题：                          │
-│    JWT未设过期时间、缺少速率限制                        │
-│                                                       │
-├───────────────────────────────────────────────────────┤
-│ > 帮我修一下审查问题█                                    │
-│  Ctrl+P=palette  /fork  /merge  /remember  /help      │
-└───────────────────────────────────────────────────────┘
+┌─ RelayOS  sess-31  [Mimo]  [AUTO]  $0.02 ─┐
+│                                              │
+│  > 设计一个支付系统                            │
+│                                              │
+│  [Mimo] 建议使用事件溯源架构，原因如下：        │
+│    1. 幂等性天然保证                          │
+│    2. 审计日志免费获得                         │
+│                                              │
+├──────────────────────────────────────────────┤
+│ > 帮我修一下审查问题█                           │
+│  Ctrl+P=palette  Tab=provider  /fork  /merge  │
+└──────────────────────────────────────────────┘
 ```
 
 | Shortcut | What |
 |----------|------|
 | `Ctrl+P` | Command palette (all settings) |
-| `Ctrl+X N` | New session |
-| `Ctrl+X S` | Session list |
-| `Ctrl+X G` | Conversation graph |
-| `Ctrl+X M` | Toggle auto/edit mode |
-| `Ctrl+X C` | Cost report |
-| `Tab` | Switch provider |
+| `Tab` | Cycle through installed CLI providers |
+| `Shift+Tab` | Cycle mode: auto → edit → group |
+| `Enter` | Send message / Confirm |
+| `↑/↓` | Input / history navigation |
 | `Esc` | Cancel / clear input |
-| `Up/Down` | Input history |
+| `Backspace` | Delete character |
+| `Ctrl+U` | Clear input line |
+| `Ctrl+C` | Exit
 
 ### Command palette (Ctrl+P)
 
 ```
-Command Palette
-────────────────────────────────────────────────
-Session:
-  New Session          (Ctrl+X N)  Start fresh
-  Fork Session         (/fork)     Branch current
-  Merge Sessions       (/merge)    Combine sessions
-  Switch Session       (Ctrl+X S)  Browse all
-  Attach Session       (/attach)   Import context
-Knowledge:
-  Remember Fact        (/remember) Save knowledge
-  Browse Knowledge     (Ctrl+X K)  Explore facts
-Settings:
-  Toggle Mode          (Ctrl+X M)  Auto / Edit
-  Budget               (Ctrl+X C)  Spending
-Tools:
-  Conversation Graph   (Ctrl+X G)  Visual tree
-System:
-  Help                 (Ctrl+X ?)
-  Quit                 (Ctrl+C)
+  Command Palette  (Esc close)
+  ────────────────────────────────────────────────
+  Session:
+    New Session            Start fresh conversation
+    Fork Session           Branch from current session
+    Merge Sessions         Combine multiple sessions
+    Switch Session         Browse all sessions
+    Attach Session         Import context from another session
+  Knowledge:
+    Remember Fact          Save knowledge: /remember key: value
+    Browse Knowledge       Explore stored facts
+  Settings:
+    Toggle Mode            Auto / Edit / Group
+    Budget                 Spending limits
+  System:
+    Quit                   Exit RelayOS
+  Filter: (type to filter)
+  Up/Down | Enter | Esc
 ```
 
-### Conversation Graph View (Ctrl+X G)
+### Switch Session Panel (Ctrl+P → Switch Session)
+
+```
+  Sessions  (Esc to close)
+  ────────────────────────────────────────────────
+  > Search: |                    ← Tab to switch
+    conv-payment    [Mimo]     2m
+     设计一个支付系统...
+    conv-review     [Claude]   30m
+     Review PR for security...
+  
+  Tab=switch  ↑↓=navigate  Enter=open  d=delete  Esc=close
+```
+
+### Conversation Graph View
 
 ```
 Conversation Graph
